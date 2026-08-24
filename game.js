@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.28';
+const VERSION='v0.31';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -17,13 +17,14 @@ const SKILLS={
   rapierCounter:{name:'幻影抜け',owner:'rapier'}
 };
 const TYPES={
-  sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180,defaultSkill:'spinSlash'},
-  spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165,defaultSkill:'doubleThrust'},
-  dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:240,defaultSkill:'dashSlash'},
-  doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130,defaultSkill:'shieldCharge'},
-  katana:{name:'刀',r:'katana',l:'katanaParry',speed:188,defaultSkill:'katanaCounter'},
-  naginata:{name:'薙刀',r:'naginata',l:'spearGuard',speed:158,defaultSkill:'naginataDoubleSweep'},
-  rapier:{name:'レイピア',r:'rapier',l:'rapierParry',speed:218,defaultSkill:'rapierCounter'}
+  sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180,weight:4,defaultSkill:'spinSlash'},
+  spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165,weight:5,defaultSkill:'doubleThrust'},
+  dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:240,weight:1,defaultSkill:'dashSlash'},
+  doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130,weight:8,defaultSkill:'shieldCharge'},
+  katana:{name:'刀',r:'katana',l:'katanaParry',speed:188,weight:3,defaultSkill:'katanaCounter'},
+  naginata:{name:'薙刀',r:'naginata',l:'spearGuard',speed:158,weight:6,defaultSkill:'naginataDoubleSweep'},
+  rapier:{name:'レイピア',r:'rapier',l:'rapierParry',speed:218,weight:2,defaultSkill:'rapierCounter'},
+  greatsword:{name:'両手剣',r:'greatsword',l:'greatswordGuard',speed:138,weight:7,defaultSkill:'spinSlash'}
 };
 let formation=['sword','spear','dagger'],formationSkills=['spinSlash','doubleThrust','dashSlash'],formationTactics=['balanced','support','flank'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[],practiceHits=[0,0],enemyTeam=null;
 const SAVE_KEY='kbs_team_v020',PROGRESS_KEY='kbs_progress_v020';
@@ -70,14 +71,14 @@ const ENEMY_TEAMS=[
  // RANK A：上位互換ではなく、武器特性を組み合わせる完成形チーム
  {rank:2,style:'受け流し',name:'スカーレット・ブレイズ',colors:['#b31f35','#f15b55','#292532'],formation:['katana','katana','rapier'],tactics:['balanced','defense','flank']},
  {rank:2,style:'長柄制圧',name:'ジェイド・ドラゴンズ',colors:['#166c50','#47b87b','#e9d86f'],formation:['naginata','naginata','spear'],tactics:['attack','support','defense']},
- {rank:2,style:'変則万能',name:'ミッドナイト・スターズ',colors:['#343469','#8b70c5','#d6d0ff'],formation:['rapier','naginata','doubleShield'],tactics:['flank','balanced','support']}
+ {rank:2,style:'変則万能',name:'ミッドナイト・スターズ',colors:['#343469','#8b70c5','#d6d0ff'],formation:['rapier','greatsword','doubleShield'],tactics:['flank','balanced','support']}
 ];
 function teamsForRank(rankIndex){return ENEMY_TEAMS.filter(t=>t.rank===rankIndex)}
 
 const PLAYER_TEAM_NAME='スノー・フォックス';
 const BLUE_UNIFORM=['#ffffff','#2f7fd3','#9fe8ff'];
-function skillFits(type,id,sk){if(sk.owner===type)return true;if(type==='katana'&&id==='spinSlash')return true;if(type==='naginata'&&(id==='doubleThrust'||id==='whirlwindAdvance'))return true;if(type==='rapier'&&id==='dashSlash')return true;return false}
-function compatibleSkills(type){return Object.entries(SKILLS).filter(([id,sk])=>skillFits(type,id,sk)&&(id===TYPES[type].defaultSkill||id==='spinSlash'&&type==='katana'||id==='doubleThrust'&&type==='naginata'||id==='dashSlash'&&type==='rapier'||progress.unlockedSkills.includes(id)))}
+function skillFits(type,id,sk){if(sk.owner===type)return true;if((type==='katana'||type==='greatsword')&&id==='spinSlash')return true;if(type==='naginata'&&(id==='doubleThrust'||id==='whirlwindAdvance'))return true;if(type==='rapier'&&id==='dashSlash')return true;return false}
+function compatibleSkills(type){return Object.entries(SKILLS).filter(([id,sk])=>skillFits(type,id,sk)&&(id===TYPES[type].defaultSkill||id==='spinSlash'&&(type==='katana'||type==='greatsword')||id==='doubleThrust'&&type==='naginata'||id==='dashSlash'&&type==='rapier'||progress.unlockedSkills.includes(id)))}
 function buildSlots(container,home=false){
   container.innerHTML='';
   for(let i=0;i<3;i++){let d=document.createElement('div');d.className='slot';let skills=compatibleSkills(formation[i]);if(!skills.some(([id])=>id===formationSkills[i]))formationSkills[i]=TYPES[formation[i]].defaultSkill;d.innerHTML=`<b>選手 ${i+1}${i===0?'（自分）':''}</b><div class="slotControls"><select data-kind="weapon" data-i="${i}">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${formation[i]===k?'selected':''}>${v.name}</option>`).join('')}</select><select data-kind="tactic" data-i="${i}">${Object.entries(TACTICS).map(([k,v])=>`<option value="${k}" ${formationTactics[i]===k?'selected':''}>戦術：${v}</option>`).join('')}</select><select data-kind="skill" data-i="${i}">${skills.map(([k,v])=>`<option value="${k}" ${formationSkills[i]===k?'selected':''}>スキル：${v.name}</option>`).join('')}</select></div>`;container.append(d)}
@@ -89,7 +90,7 @@ q('#start').onclick=()=>{ui.setup.classList.add('hidden');startMatch()};q('#back
 function unit(team,i,type,skillId=null){
   // 壁から十分離した固定スポーン。開始直後に壁へ埋まらないよう3レーン中央へ配置。
   const ys=[155,360,565], bx=team===0?155:1125;
-  return {team,i,type,skillId:skillId||TYPES[type].defaultSkill,tactic:team?((enemyTeam?.tactics||[])[i]||'balanced'):(formationTactics[i]||'balanced'),x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,ai:team===1||i>0,species:team?(i%3):(i===0?'snowFox':i===1?'frog':'rabbit'),counterT:0,parryT:0,parryCd:0,parryKind:null,handAnimL:0,handAnimR:0,attackPose:null,skillCd:0,invuln:0,stepT:0,stepVX:0,stepVY:0,stepCd:0,spearAdvanceT:0,spearAdvanceVX:0,spearAdvanceVY:0}
+  return {team,i,type,skillId:skillId||TYPES[type].defaultSkill,tactic:team?((enemyTeam?.tactics||[])[i]||'balanced'):(formationTactics[i]||'balanced'),x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,greatswordGuard:false,greatswordGuardA:0,ai:team===1||i>0,species:team?(i%3):(i===0?'snowFox':i===1?'frog':'rabbit'),counterT:0,parryT:0,parryCd:0,parryKind:null,handAnimL:0,handAnimR:0,attackPose:null,skillCd:0,invuln:0,stepT:0,stepVX:0,stepVY:0,stepCd:0,spearAdvanceT:0,spearAdvanceVX:0,spearAdvanceVY:0}
 }
 function resetRound(){actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i])));(enemyTeam?.formation||['sword','spear','dagger']).forEach((t,i)=>actors.push(unit(1,i,t)));roundOver=0;effects=[];syncButtons()}
 function pickEnemyTeam(){let pool=ENEMY_TEAMS.filter(t=>t.rank<=progress.unlocked);enemyTeam=pool[Math.floor(Math.random()*pool.length)]}
@@ -98,7 +99,7 @@ function controlled(){return actors.find(a=>a.team===0&&a.alive&&!a.ai)||null}
 function transfer(){let n=actors.find(a=>a.team===0&&a.alive);if(n){actors.filter(a=>a.team===0).forEach(a=>a.ai=true);n.ai=false;syncButtons()}}
 function syncModeButtons(){if(mode==='field'){ui.S.innerHTML='A<small>情報</small>';ui.E.innerHTML='B<small>入る</small>'}else if(mode==='practice'){syncButtons();ui.E.innerHTML='B<small>練習終わる</small>'}else syncButtons()}
 function syncButtons(){let a=controlled();if(!a)return;let t=TYPES[a.type],sk=SKILLS[a.skillId]||SKILLS[t.defaultSkill];ui.R.innerHTML=`R<small>${label(t.r)}</small>`;ui.L.innerHTML=`L<small>${label(t.l)}</small>`;let cd=Math.max(0,a.skillCd||0);ui.S.innerHTML=`A<small>${cd>0?`${cd.toFixed(1)}秒`:(sk?.name||'スキル')}</small>`;ui.E.innerHTML='B<small>キャラ交代</small>'}
-function label(v){return ({sword:'剣',spear:'突き',spearGuard:'回転防御',shield:'盾',daggerAttack:'連続斬り',daggerGuard:'二刀防御',dualShield:'両盾',katana:'斬り',katanaParry:'受け流し',naginata:'薙ぎ',rapier:'斬り→突き',rapierParry:'パリィ',none:'—'})[v]||v}
+function label(v){return ({sword:'剣',spear:'突き',spearGuard:'回転防御',shield:'盾',daggerAttack:'連続斬り',daggerGuard:'二刀防御',dualShield:'両盾',katana:'斬り',katanaParry:'受け流し',naginata:'薙ぎ',rapier:'斬り→突き',rapierParry:'パリィ',greatsword:'大剣薙ぎ',greatswordGuard:'大剣防御',none:'—'})[v]||v}
 function nearestEnemy(a){let es=actors.filter(b=>b.alive&&b.team!==a.team);return es.sort((p,q)=>dist(a,p)-dist(a,q))[0]}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)} function angle(a,b){return Math.atan2(b.y-a.y,b.x-a.x)}
 function norm(v){while(v>Math.PI)v-=Math.PI*2;while(v<-Math.PI)v+=Math.PI*2;return v}
@@ -109,7 +110,7 @@ function stepProfile(type){
     sword:{distance:62,duration:.135},
     spear:{distance:54,duration:.155},
     doubleShield:{distance:38,duration:.19},
-    katana:{distance:64,duration:.13},naginata:{distance:50,duration:.16},rapier:{distance:74,duration:.115}
+    katana:{distance:64,duration:.13},naginata:{distance:50,duration:.16},rapier:{distance:74,duration:.115},greatsword:{distance:30,duration:.22}
   })[type]||{distance:58,duration:.14};
 }
 function triggerStep(a,vx,vy){
@@ -163,7 +164,11 @@ function useSkill(a){
   let e=nearestEnemy(a);if(e)a.face=angle(a,e);
   const skill=a.skillId||TYPES[a.type].defaultSkill;
   if(skill==='spinSlash'){
-    a.skillCd=5.0;a.stun=Math.max(a.stun,.16);effects.push({kind:'spinSkill',owner:a,t:.72,max:.72,windup:.20,active:.22,recovery:.30,resolved:false});a.cd=Math.max(a.cd,.72);
+    if(a.type==='greatsword'){
+      a.skillCd=5.8;a.stun=Math.max(a.stun,.22);effects.push({kind:'spinSkill',owner:a,t:.92,max:.92,windup:.30,active:.24,recovery:.38,resolved:false,weapon:'greatsword',range:150,knockback:68});a.cd=Math.max(a.cd,.92);
+    }else{
+      a.skillCd=5.0;a.stun=Math.max(a.stun,.16);effects.push({kind:'spinSkill',owner:a,t:.72,max:.72,windup:.20,active:.22,recovery:.30,resolved:false,weapon:a.type==='katana'?'katana':'sword',range:126,knockback:0});a.cd=Math.max(a.cd,.72);
+    }
   }else if(skill==='doubleThrust'){
     a.skillCd=5.4;
     const mk=(delay,second)=>({kind:'thrust',weapon:'spear',skill:true,second,side:'r',x:a.x,y:a.y,a:a.face,range:second?220:190,arc:.13,t:.66,max:.66,windup:.18,active:.12,recovery:.36,delay,team:a.team,owner:a,resolved:false,parry:false,recoveryApplied:false,knockback:second?42:0});
@@ -232,6 +237,12 @@ function hand(a,side,down=true){
     if(down){let e=nearestEnemy(a);if(e)a.face=angle(a,e)}
     return;
   }
+  // 大剣は刀身そのものを正面に構えて受ける。押している間は維持できるが、移動が大きく遅くなる。
+  if(kind==='greatswordGuard'){
+    a.greatswordGuard=down;
+    if(down){let e=nearestEnemy(a);if(e){a.face=angle(a,e);a.greatswordGuardA=a.face}}
+    return;
+  }
   // 刀とレイピアは長押し防御ではなく、押した直後だけ有効な受け流し／パリィ。
   if(kind==='katanaParry'||kind==='rapierParry'){
     if(down&&a.parryCd<=0){
@@ -261,7 +272,7 @@ function hand(a,side,down=true){
   }
   attack(a,kind,side);
   // 剣は見てから反応できるよう少し遅め、槍は溜めが長い。
-  a.cd=kind==='spear'?1.02:kind==='naginata'?1.00:kind==='katana'?.94:.92;
+  a.cd=kind==='spear'?1.02:kind==='naginata'?1.00:kind==='greatsword'?1.22:kind==='katana'?.94:.92;
 }
 
 function daggerCombo(a){
@@ -278,8 +289,8 @@ function daggerCombo(a){
 
 function rapierCombo(a){
   // レイピア通常攻撃：近距離を横斬りで触ってから、すぐ細い突きへ繋ぐ二連撃。
-  const sw={kind:'swing',weapon:'rapier',side:'r',x:a.x,y:a.y,a:a.face,range:108,arc:.82,t:.34,max:.34,windup:.055,active:.12,recovery:.165,delay:0,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false};
-  const th={kind:'thrust',weapon:'rapier',side:'r',x:a.x,y:a.y,a:a.face,range:158,arc:.14,t:.37,max:.37,windup:.055,active:.13,recovery:.185,delay:.16,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:12,lungeApplied:false,retarget:true,retargeted:false};
+  const sw={kind:'swing',weapon:'rapier',side:'r',x:a.x,y:a.y,a:a.face,range:98,arc:.82,t:.34,max:.34,windup:.055,active:.12,recovery:.165,delay:0,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false};
+  const th={kind:'thrust',weapon:'rapier',side:'r',x:a.x,y:a.y,a:a.face,range:142,arc:.14,t:.39,max:.39,windup:.07,active:.13,recovery:.19,delay:.16,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:34,lungeApplied:false,retarget:true,retargeted:false};
   effects.push(sw,th);a.attackPose=sw;
 }
 
@@ -289,7 +300,8 @@ function attack(a,kind,side){
     sword:{kind:'swing',range:104,arc:1.52,windup:.30,active:.17,recovery:.30},
     katana:{kind:'swing',range:132,arc:1.02,windup:.34,active:.17,recovery:.32},
     naginata:{kind:'swing',range:172,arc:Math.PI/2,windup:.36,active:.18,recovery:.36},
-    rapier:{kind:'thrust',range:154,arc:.15,windup:.20,active:.15,recovery:.25}
+    rapier:{kind:'thrust',range:140,arc:.15,windup:.20,active:.15,recovery:.25},
+    greatsword:{kind:'swing',range:150,arc:1.86,windup:.44,active:.21,recovery:.43}
   }[kind]||{kind:'swing',range:104,arc:1.52,windup:.30,active:.17,recovery:.30};
   let total=cfg.windup+cfg.active+cfg.recovery;
   let e={kind:cfg.kind,weapon:kind,side,x:a.x,y:a.y,a:a.face,range:cfg.range,arc:cfg.arc,t:total,max:total,windup:cfg.windup,active:cfg.active,recovery:cfg.recovery,team:a.team,owner:a,resolved:false,parry:false,recoveryApplied:false};
@@ -319,7 +331,7 @@ function applyAttackRecovery(e){
   if(e.recoveryApplied||!e.owner?.alive)return;
   e.recoveryApplied=true;
   // 全武器共通のごく短い攻撃後硬直。短剣は軽く、槍はやや重い。
-  let lock=e.weapon==='spear'?.16:e.weapon==='naginata'?.17:e.weapon==='katana'?.13:e.weapon==='rapier'?.09:e.weapon&&e.weapon.startsWith('dagger')?.075:.12;
+  let lock=e.weapon==='spear'?.16:e.weapon==='naginata'?.17:e.weapon==='greatsword'?.22:e.weapon==='katana'?.13:e.weapon==='rapier'?.09:e.weapon&&e.weapon.startsWith('dagger')?.075:.12;
   e.owner.stun=Math.max(e.owner.stun,lock);
 }
 function weaponTip(e,rangeScale=1){
@@ -339,7 +351,7 @@ function parryAttacks(e){
     if(f===e||!(f.kind==='swing'||f.kind==='thrust')||f.resolved||f.clashed)continue;
     if(attacksOverlap(e,f)){
       e.clashed=f.clashed=true;e.resolved=f.resolved=true;
-      e.owner.stun=Math.max(e.owner.stun,.30);f.owner.stun=Math.max(f.owner.stun,.30);knockApart(e.owner,f.owner,24,24);
+      let ew=weaponWeight(e.weapon),fw=weaponWeight(f.weapon),diff=ew-fw;let pushE=Math.max(10,24-diff*5),pushF=Math.max(10,24+diff*5);e.owner.stun=Math.max(e.owner.stun,.30+Math.max(0,-diff)*.025);f.owner.stun=Math.max(f.owner.stun,.30+Math.max(0,diff)*.025);knockApart(e.owner,f.owner,pushE,pushF);
       let mx=(e.owner.x+f.owner.x)/2,my=(e.owner.y+f.owner.y)/2;
       effects.push({kind:'clash',x:mx,y:my,t:.30});
       return true;
@@ -368,11 +380,11 @@ function resolveAttack(e){
     hit.push(b);
   }
   for(let b of hit){
-    if(blocked(b,a)){if(e.knockback)knockApart(a,b,e.knockback,12);continue}
+    if(blocked(b,a,e)){if(e.knockback)knockApart(a,b,e.knockback,12);continue}
     combatHit(b,a,e);
   }
 }
-function blocked(def,atk){
+function blocked(def,atk,source=null){
   let ok=false;
   if(def.parryT>0){
     // 通常の受け流し／パリィは成功時に明確な有利を作る。
@@ -395,10 +407,11 @@ function blocked(def,atk){
     if(def.type==='katana'){let sw={kind:'swing',weapon:'katana',skill:true,side:'r',x:def.x,y:def.y,a:angle(def,atk),range:142,arc:1.10,t:.38,max:.38,windup:.05,active:.14,recovery:.19,delay:.04,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,specialHit:'流し斬り HIT!'};effects.push(sw);def.attackPose=sw;}
     else if(def.type==='rapier'){let aa=angle(def,atk)+Math.PI/2*(Math.random()<.5?-1:1);safePush(def,Math.cos(aa)*58,Math.sin(aa)*58);def.face=angle(def,atk);let th={kind:'thrust',weapon:'rapier',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:185,arc:.16,t:.42,max:.42,windup:.04,active:.15,recovery:.23,delay:.03,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:64,lungeApplied:false,specialHit:'幻影斬り HIT!'};effects.push(th);def.attackPose=th;}return true;}
   if(def.spearGuard>0||def.daggerGuard)ok=true;
+  else if(def.greatswordGuard){ok=Math.abs(norm(angle(def,atk)-def.greatswordGuardA))<1.08}
   else if(def.shield){let dual=TYPES[def.type].r==='dualShield';ok=dual||Math.abs(norm(angle(def,atk)-def.shieldA))<1.18}
   if(ok){
     // 防御成功でも双方が少し離れる。攻撃側の方が大きく弾かれる。
-    knockApart(atk,def,34,8);atk.stun=Math.max(atk.stun,.48);def.stun=Math.max(def.stun,.07);
+    let aw=weaponWeight(source?.weapon||TYPES[atk.type]?.r),heavyPush=Math.max(8,(aw-3)*8);knockApart(atk,def,34,heavyPush);atk.stun=Math.max(atk.stun,.48);def.stun=Math.max(def.stun,.07+Math.max(0,aw-4)*.025);
     effects.push({kind:'block',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.34});
   }
   return ok;
@@ -412,10 +425,12 @@ function combatHit(target,attacker,source){
 }
 function resolveSpin(e){
   let a=e.owner;if(!a||!a.alive)return;
+  const rr=e.range||126;
   for(let b of actors){
     if(!b.alive||b.team===a.team||b.invuln>0)continue;
-    if(dist(a,b)>128+b.r||segmentHitsWall(a.x,a.y,b.x,b.y,1))continue;
-    if(blocked(b,a))continue;
+    if(dist(a,b)>rr+b.r||segmentHitsWall(a.x,a.y,b.x,b.y,1))continue;
+    if(blocked(b,a,e)){if(e.knockback)knockApart(a,b,8,e.knockback);continue}
+    if(e.knockback)knockApart(a,b,8,e.knockback);
     combatHit(b,a,e);
   }
 }
@@ -437,7 +452,7 @@ function rescueFromWall(a){
 function move(a,vx,vy,dt){
   // 壁に斜めから当たっても完全停止せず、壁沿いに滑る。
   // 長い分岐壁でAIが全員スタックして『フリーズ』したように見えるのを防ぐ。
-  let sp=TYPES[a.type].speed*(a.shield?(a.type==='doubleShield'?.42:.62):a.daggerGuard?.72:1);
+  let sp=TYPES[a.type].speed*(a.shield?(a.type==='doubleShield'?.42:.62):a.greatswordGuard?.48:a.daggerGuard?.72:1);
   let dx=vx*sp*dt,dy=vy*sp*dt;
   let nx=Math.max(court.x+30,Math.min(court.x+court.w-30,a.x+dx));
   if(!collides(nx,a.y,a.r))a.x=nx;
@@ -532,21 +547,22 @@ function ai(a,dt){
   else if(a.type==='dagger'&&d>132)a.daggerGuard=false;
   // 刀・レイピアCPUは相手が攻撃できる間合いに入った時、戦術に応じてタイミング防御を狙う。
   // 完璧な反応にはせず、上位ランクほど『受けるチーム』らしい動きが出る程度。
+  if(a.type==='greatsword'&&d<150){if(!a.greatswordGuard&&Math.random()<.030){hand(a,'l',true)}else if(d>165)a.greatswordGuard=false}
   if((a.type==='katana'||a.type==='rapier')&&d<145&&a.parryCd<=0&&a.cd<=0){
     const chance=tactic==='defense'?.075:tactic==='balanced'?.045:.028;
     if(Math.random()<chance){hand(a,'l',true);return}
   }
-  const defending=a.shield||a.daggerGuard||a.spearGuard>0||a.parryT>0;
+  const defending=a.shield||a.daggerGuard||a.greatswordGuard||a.spearGuard>0||a.parryT>0;
 
   // スキルは通常攻撃より低頻度。武器と戦術に合う距離でだけ使用。
   if(a.skillCd<=0&&!defending&&!outnumbered&&Math.random()<(tactic==='attack'?.011:.007)){
-    const skillRange=a.type==='spear'?200:a.type==='naginata'?185:a.type==='rapier'?155:a.type==='katana'?145:a.type==='dagger'?135:130;
+    const skillRange=a.type==='spear'?200:a.type==='naginata'?185:a.type==='greatsword'?165:a.type==='rapier'?155:a.type==='katana'?145:a.type==='dagger'?135:130;
     if(d<skillRange){useSkill(a);return}
   }
 
   // 攻撃可能距離なら攻撃。ただし人数不利では「当たる寸前」以外は無理に振らない。
-  const attackDist=a.type==='spear'?158:a.type==='naginata'?150:a.type==='rapier'?132:a.type==='katana'?122:a.type==='dagger'?108:116;
-  if(d<attackDist&&a.cd<=0&&!a.shield&&!a.daggerGuard&&a.spearGuard<=0&&(!outnumbered||d<attackDist*.72)&&(tactic!=='defense'||d<attackDist*.82)){
+  const attackDist=a.type==='spear'?158:a.type==='naginata'?150:a.type==='greatsword'?142:a.type==='rapier'?132:a.type==='katana'?122:a.type==='dagger'?108:116;
+  if(d<attackDist&&a.cd<=0&&!a.shield&&!a.daggerGuard&&!a.greatswordGuard&&a.spearGuard<=0&&(!outnumbered||d<attackDist*.72)&&(tactic!=='defense'||d<attackDist*.82)){
     a.face=angle(a,e);hand(a,'r',true);return;
   }
 
@@ -561,7 +577,7 @@ function ai(a,dt){
   }else if(d<(tactic==='attack'?250:tactic==='defense'?170:210)){
     // 敵を見つけても直線突撃はしない。武器ごとの得意間合いを保ちながら横へ回る。
     a.face=angle(a,e);
-    const desired=a.type==='spear'?172:a.type==='naginata'?162:a.type==='rapier'?140:a.type==='katana'?132:a.type==='dagger'?112:138;
+    const desired=a.type==='spear'?172:a.type==='naginata'?162:a.type==='greatsword'?154:a.type==='rapier'?140:a.type==='katana'?132:a.type==='dagger'?112:138;
     const side=tactic==='flank'?((a.i+a.team)%2?1:-1):((a.i+a.team)%2?1:-1);
     if(d>desired+24) ang=angle(a,e)+side*.10;
     else if(d<desired-20) ang=angle(a,e)+Math.PI+side*.16;
@@ -744,9 +760,20 @@ x.strokeStyle='#3f493f';x.lineWidth=2;x.beginPath();x.arc(0,-2,7,.3,2.8);x.strok
 // 武器だけターゲット方向へ向ける
 x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;if(!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}drawWeapon.owner=null;x.restore();
 if(a===controlled()){x.strokeStyle='#fff';x.lineWidth=3;x.beginPath();x.arc(0,2,34,0,Math.PI*2);x.stroke()}x.restore();x.fillStyle='#17382f';x.font='11px sans-serif';x.textAlign='center';x.fillText(TYPES[a.type].name,a.x,a.y+67);x.textAlign='start'}
-function weaponColor(k){return k==='katana'?'#ff4d59':k==='naginata'?'#56ef79':k==='rapier'?'#4ca8ff':k==='spear'?'#63f6ff':k&&k.startsWith('dagger')?'#ff75df':'#ffe66d'}
+const WEIGHT_COLORS={1:'#536dff',2:'#36a9ff',3:'#28d7c0',4:'#55df69',5:'#f2dc45',6:'#ff9b3d',7:'#ff4d4d'};
+function weaponWeight(k){
+  if(k&&k.startsWith('dagger'))return 1;
+  if(k==='rapier'||k==='rapierParry')return 2;
+  if(k==='katana'||k==='katanaParry')return 3;
+  if(k==='sword'||k==='shield')return 4;
+  if(k==='spear'||k==='spearGuard')return 5;
+  if(k==='naginata')return 6;
+  if(k==='greatsword'||k==='greatswordGuard')return 7;
+  return 4;
+}
+function weaponColor(k){return WEIGHT_COLORS[weaponWeight(k)]||WEIGHT_COLORS[4]}
 function drawWeapon(k,side,active,anim=0){
- if(k==='none'||k==='katanaParry'||k==='rapierParry')return;
+ if(k==='none'||k==='katanaParry'||k==='rapierParry'||k==='greatswordGuard')return;
  x.save();x.lineCap='round';
  if(k==='shield'||k==='dualShield'){
    let cy=side*23;x.translate(22,cy);x.shadowBlur=active?18:7;x.shadowColor=active?'#63f6ff':'#9fdbea';
@@ -758,30 +785,35 @@ function drawWeapon(k,side,active,anim=0){
  }else if(k==='daggerGuard'){
    // 左ボタンは追加武器ではなく二刀防御状態。右側描画で二本をまとめて描く。
  }else{
-   let col=weaponColor(k),len=k==='spear'?92:k==='naginata'?112:k==='katana'?74:k==='rapier'?82:k.startsWith('dagger')?50:58;
+   let col=weaponColor(k),len=k==='spear'?92:k==='naginata'?112:k==='greatsword'?104:k==='katana'?74:k==='rapier'?70:k.startsWith('dagger')?50:58;
    let owner=drawWeapon.owner,guarding=owner&&owner.daggerGuard&&k==='daggerAttack';
    if(owner&&owner.spearGuard>0&&(k==='spear'||k==='naginata')){x.restore();return;}
    let baseY=side*(k.startsWith('dagger')?(guarding?12:30):14),tipY=side*(k.startsWith('dagger')?(guarding?7:42):20);
-   if(k==='spear'||k==='naginata'||k==='rapier'){baseY=0;tipY=0;}
+   if(k==='spear'||k==='naginata'||k==='rapier'||k==='greatsword'){baseY=0;tipY=0;}
    if(k.startsWith('dagger')&&anim>0){let p=Math.min(1,anim/.24);let swing=Math.sin((1-p)*Math.PI)*22;tipY-=side*swing;baseY+=side*4}
    // 攻撃中は「持っている一本そのもの」が動く。別武器は描かない。
    let pose=owner&&owner.attackPose&&owner.attackPose.weapon===k?owner.attackPose:null;
    if(pose){let ph=attackPhase(pose),el=pose.max-pose.t;if(k==='spear'||(k==='rapier'&&pose.kind==='thrust')){
      let pr=ph==='windup'?Math.max(.65,1-el/pose.windup*.35):ph==='active'?1.65:Math.max(1,1.65-(el-pose.windup-pose.active)/pose.recovery*.65);
      len*=pr;
-   }else if(k==='naginata'&&pose.kind==='swing'){
+   }else if((k==='naginata'||k==='greatsword')&&pose.kind==='swing'){
      let q=Math.max(0,Math.min(1,(el-pose.windup*.35)/(pose.windup+pose.active)));
-     x.rotate(-.75+q*1.5);
+     x.rotate((k==='greatsword'?-0.95:-.75)+q*(k==='greatsword'?1.9:1.5));
    }else if(k==='sword'){
      let pr=ph==='windup'?Math.min(1,el/pose.windup):1;tipY+=side*(1-pr)*22;
    }}
+   if(owner&&owner.greatswordGuard&&k==='greatsword'){x.rotate(-0.82);baseY=0;tipY=0;}
    if(owner&&owner.parryT>0&&(k==='katana'||k==='rapier')){
      x.rotate(k==='katana'?-0.72:-0.48);baseY*=.25;tipY*=.25;
    }
    const drawBlade=(by,ty)=>{
      const pole=(k==='spear'||k==='naginata');
      x.shadowBlur=18;x.shadowColor=col;
-     if(pole){
+     if(k==='greatsword'){
+       x.strokeStyle='#5a4c61';x.lineWidth=8;x.beginPath();x.moveTo(0,by);x.lineTo(20,by);x.stroke();
+       x.strokeStyle=col;x.lineWidth=15;x.beginPath();x.moveTo(18,by);x.lineTo(len,ty);x.stroke();
+       x.shadowBlur=0;x.strokeStyle='#ffffff';x.globalAlpha=.72;x.lineWidth=3;x.beginPath();x.moveTo(22,by);x.lineTo(len-3,ty);x.stroke();x.globalAlpha=1;
+     }else if(pole){
        // 槍・薙刀は持ち手まで同系色で発光させ、回転時に茶色い棒だけが目立たないようにする。
        x.strokeStyle=col;x.lineWidth=7;x.beginPath();x.moveTo(-20,by);x.lineTo(len,ty);x.stroke();
        x.shadowBlur=0;x.strokeStyle='#ffffff';x.globalAlpha=.72;x.lineWidth=2;x.beginPath();x.moveTo(-17,by);x.lineTo(len-2,ty);x.stroke();x.globalAlpha=1;
@@ -800,7 +832,7 @@ function drawWeapon(k,side,active,anim=0){
 function drawEffect(e){
  x.save();
  if(e.kind==='spinSkill'){
-   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,col=weaponColor('sword');x.globalAlpha=.55;x.strokeStyle=col;x.shadowBlur=20;x.shadowColor=col;x.lineWidth=12;x.beginPath();x.arc(a.x,a.y,126,0,Math.PI*2);x.stroke();x.globalAlpha=.18;x.lineWidth=28;x.beginPath();x.arc(a.x,a.y,106+p*18,0,Math.PI*2);x.stroke()}
+   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,col=weaponColor(e.weapon||'sword'),rr=e.range||126;x.globalAlpha=.55;x.strokeStyle=col;x.shadowBlur=20;x.shadowColor=col;x.lineWidth=e.weapon==='greatsword'?16:12;x.beginPath();x.arc(a.x,a.y,rr,0,Math.PI*2);x.stroke();x.globalAlpha=.18;x.lineWidth=e.weapon==='greatsword'?34:28;x.beginPath();x.arc(a.x,a.y,rr-20+p*18,0,Math.PI*2);x.stroke()}
  }else if(e.kind==='dashGuard'){
    let a=e.owner;if(a&&a.alive){let col=weaponColor('daggerAttack');x.globalAlpha=.32;x.strokeStyle=col;x.shadowBlur=18;x.shadowColor=col;x.lineWidth=10;x.beginPath();x.arc(a.x,a.y,48,a.face-1.0,a.face+1.0);x.stroke();x.shadowBlur=0}
  }else if(e.kind==='guardBurst'){
