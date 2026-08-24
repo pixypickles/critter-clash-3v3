@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.32';
+const VERSION='v0.33';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -758,7 +758,7 @@ if(species==='frog'){
 }
 x.strokeStyle='#3f493f';x.lineWidth=2;x.beginPath();x.arc(0,-2,7,.3,2.8);x.stroke();
 // 武器だけターゲット方向へ向ける
-x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;if(!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}drawWeapon.owner=null;x.restore();
+x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;let spinning=effects.some(e=>e.kind==='spinSkill'&&e.owner===a&&e.t>0);if(!spinning&&!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}drawWeapon.owner=null;x.restore();
 if(a===controlled()){x.strokeStyle='#fff';x.lineWidth=3;x.beginPath();x.arc(0,2,34,0,Math.PI*2);x.stroke()}x.restore();x.fillStyle='#17382f';x.font='11px sans-serif';x.textAlign='center';x.fillText(TYPES[a.type].name,a.x,a.y+67);x.textAlign='start'}
 const WEIGHT_COLORS={1:'#536dff',2:'#36a9ff',3:'#28d7c0',4:'#55df69',5:'#f2dc45',6:'#ff9b3d',7:'#ff4d4d'};
 function weaponWeight(k){
@@ -802,7 +802,7 @@ function drawWeapon(k,side,active,anim=0){
    }else if(k==='sword'){
      let pr=ph==='windup'?Math.min(1,el/pose.windup):1;tipY+=side*(1-pr)*22;
    }}
-   if(owner&&owner.greatswordGuard&&k==='greatsword'){x.rotate(-0.82);baseY=0;tipY=0;}
+   if(owner&&owner.greatswordGuard&&k==='greatsword'){x.rotate(-0.12);baseY=0;tipY=0;}
    if(owner&&owner.parryT>0&&(k==='katana'||k==='rapier')){
      x.rotate(k==='katana'?-0.72:-0.48);baseY*=.25;tipY*=.25;
    }
@@ -826,8 +826,8 @@ function drawWeapon(k,side,active,anim=0){
      }else if(k==='katana'){
        // 刀は直線ではなく、緩やかに反った一本の刀身として描く。
        x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo(5,by);x.lineTo(18,by);x.stroke();
-       x.shadowBlur=18;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(16,by);x.quadraticCurveTo(len*.60,ty-11*side,len,ty-5*side);x.stroke();
-       x.shadowBlur=0;x.strokeStyle='#ffffff';x.globalAlpha=.82;x.lineWidth=2;x.beginPath();x.moveTo(20,by);x.quadraticCurveTo(len*.60,ty-10*side,len-3,ty-5*side);x.stroke();x.globalAlpha=1;
+       x.shadowBlur=18;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(16,by);x.quadraticCurveTo(len*.60,ty+11*side,len,ty+5*side);x.stroke();
+       x.shadowBlur=0;x.strokeStyle='#ffffff';x.globalAlpha=.82;x.lineWidth=2;x.beginPath();x.moveTo(20,by);x.quadraticCurveTo(len*.60,ty+10*side,len-3,ty+5*side);x.stroke();x.globalAlpha=1;
      }else{
        x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo(7,by);x.lineTo(17,by);x.stroke();
        x.strokeStyle=col;x.lineWidth=7;x.beginPath();x.moveTo(16,by);x.lineTo(len,ty);x.stroke();
@@ -842,7 +842,7 @@ function drawWeapon(k,side,active,anim=0){
 function drawEffect(e){
  x.save();
  if(e.kind==='spinSkill'){
-   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,col=weaponColor(e.weapon||'sword'),rr=e.range||126;x.globalAlpha=.55;x.strokeStyle=col;x.shadowBlur=20;x.shadowColor=col;x.lineWidth=e.weapon==='greatsword'?16:12;x.beginPath();x.arc(a.x,a.y,rr,0,Math.PI*2);x.stroke();x.globalAlpha=.18;x.lineWidth=e.weapon==='greatsword'?34:28;x.beginPath();x.arc(a.x,a.y,rr-20+p*18,0,Math.PI*2);x.stroke()}
+   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,col=weaponColor(e.weapon||'sword'),rr=e.range||126,ang=p*Math.PI*2*1.35+a.face;x.globalAlpha=.72;x.strokeStyle=col;x.shadowBlur=26;x.shadowColor=col;x.lineWidth=e.weapon==='greatsword'?18:13;x.beginPath();x.arc(a.x,a.y,rr,0,Math.PI*2);x.stroke();x.globalAlpha=.30;x.lineWidth=e.weapon==='greatsword'?38:30;x.beginPath();x.arc(a.x,a.y,rr-18+p*12,0,Math.PI*2);x.stroke();x.globalAlpha=.96;x.lineWidth=e.weapon==='greatsword'?18:10;x.beginPath();x.arc(a.x,a.y,rr,ang-.34,ang+.34);x.stroke();x.globalAlpha=.65;x.lineWidth=4;x.strokeStyle='#fff';x.beginPath();x.arc(a.x,a.y,rr,ang-.26,ang+.30);x.stroke()}
  }else if(e.kind==='dashGuard'){
    let a=e.owner;if(a&&a.alive){let col=weaponColor('daggerAttack');x.globalAlpha=.32;x.strokeStyle=col;x.shadowBlur=18;x.shadowColor=col;x.lineWidth=10;x.beginPath();x.arc(a.x,a.y,48,a.face-1.0,a.face+1.0);x.stroke();x.shadowBlur=0}
  }else if(e.kind==='guardBurst'){
