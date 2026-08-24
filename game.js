@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.27';
+const VERSION='v0.28';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -59,10 +59,21 @@ const fieldPlayer={x:300,y:220,r:22,speed:235};
 const homeGate={x:250,y:175,r:92},arenaGate={x:690,y:300,r:82},trainingGate={x:1035,y:145,r:88},trialGate={x:1010,y:535,r:86};
 const TACTICS={balanced:'バランス',support:'味方と行動',flank:'回り込み',defense:'守備',attack:'攻撃重視'};
 const ENEMY_TEAMS=[
- {name:'サンセット・フォックス',colors:['#d85d45','#f2a33a','#fff1c9'],formation:['dagger','sword','spear'],tactics:['flank','balanced','attack']},
- {name:'バイオレット・ラビッツ',colors:['#7257b7','#d39adf','#f2d56b'],formation:['spear','spear','sword'],tactics:['defense','support','balanced']},
- {name:'モス・フロッグス',colors:['#3d8a66','#83b94c','#f0d465'],formation:['doubleShield','dagger','sword'],tactics:['defense','flank','support']}
+ // RANK C：基本武器で役割が分かりやすい3チーム
+ {rank:0,style:'速攻',name:'サンセット・フォックス',colors:['#d85d45','#f2a33a','#fff1c9'],formation:['dagger','sword','spear'],tactics:['flank','balanced','attack']},
+ {rank:0,style:'槍陣',name:'バイオレット・ラビッツ',colors:['#7257b7','#d39adf','#f2d56b'],formation:['spear','spear','sword'],tactics:['defense','support','balanced']},
+ {rank:0,style:'堅守',name:'モス・フロッグス',colors:['#3d8a66','#83b94c','#f0d465'],formation:['doubleShield','dagger','sword'],tactics:['defense','flank','support']},
+ // RANK B：刀・レイピアを混ぜ、受けと差し返しを覚えたチーム
+ {rank:1,style:'カウンター',name:'クリムゾン・クレインズ',colors:['#a92d38','#efc4b7','#ffe9d9'],formation:['katana','rapier','sword'],tactics:['defense','flank','support']},
+ {rank:1,style:'高速包囲',name:'アズール・リンクス',colors:['#2467a8','#61c7e8','#e7fbff'],formation:['rapier','dagger','rapier'],tactics:['flank','attack','flank']},
+ {rank:1,style:'中央制圧',name:'アンバー・ボアーズ',colors:['#8a5426','#d99537','#f5e0a7'],formation:['naginata','spear','doubleShield'],tactics:['balanced','support','defense']},
+ // RANK A：上位互換ではなく、武器特性を組み合わせる完成形チーム
+ {rank:2,style:'受け流し',name:'スカーレット・ブレイズ',colors:['#b31f35','#f15b55','#292532'],formation:['katana','katana','rapier'],tactics:['balanced','defense','flank']},
+ {rank:2,style:'長柄制圧',name:'ジェイド・ドラゴンズ',colors:['#166c50','#47b87b','#e9d86f'],formation:['naginata','naginata','spear'],tactics:['attack','support','defense']},
+ {rank:2,style:'変則万能',name:'ミッドナイト・スターズ',colors:['#343469','#8b70c5','#d6d0ff'],formation:['rapier','naginata','doubleShield'],tactics:['flank','balanced','support']}
 ];
+function teamsForRank(rankIndex){return ENEMY_TEAMS.filter(t=>t.rank===rankIndex)}
+
 const PLAYER_TEAM_NAME='スノー・フォックス';
 const BLUE_UNIFORM=['#ffffff','#2f7fd3','#9fe8ff'];
 function skillFits(type,id,sk){if(sk.owner===type)return true;if(type==='katana'&&id==='spinSlash')return true;if(type==='naginata'&&(id==='doubleThrust'||id==='whirlwindAdvance'))return true;if(type==='rapier'&&id==='dashSlash')return true;return false}
@@ -81,8 +92,8 @@ function unit(team,i,type,skillId=null){
   return {team,i,type,skillId:skillId||TYPES[type].defaultSkill,tactic:team?((enemyTeam?.tactics||[])[i]||'balanced'):(formationTactics[i]||'balanced'),x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,ai:team===1||i>0,species:team?(i%3):(i===0?'snowFox':i===1?'frog':'rabbit'),counterT:0,parryT:0,parryCd:0,parryKind:null,handAnimL:0,handAnimR:0,attackPose:null,skillCd:0,invuln:0,stepT:0,stepVX:0,stepVY:0,stepCd:0,spearAdvanceT:0,spearAdvanceVX:0,spearAdvanceVY:0}
 }
 function resetRound(){actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i])));(enemyTeam?.formation||['sword','spear','dagger']).forEach((t,i)=>actors.push(unit(1,i,t)));roundOver=0;effects=[];syncButtons()}
-function pickEnemyTeam(){enemyTeam=ENEMY_TEAMS[Math.floor(Math.random()*ENEMY_TEAMS.length)]}
-function startMatch(){mode='match';blue=red=0;if(!tournament)pickEnemyTeam();ui.mode.textContent=tournament?'TOURNAMENT':'MATCH';ui.score.textContent='0 - 0';resetRound();ui.status.textContent=`${PLAYER_TEAM_NAME} VS ${enemyTeam.name}　敵拠点を取るか全員OUTで勝利`;syncModeButtons()}
+function pickEnemyTeam(){let pool=ENEMY_TEAMS.filter(t=>t.rank<=progress.unlocked);enemyTeam=pool[Math.floor(Math.random()*pool.length)]}
+function startMatch(){mode='match';blue=red=0;if(!tournament)pickEnemyTeam();ui.mode.textContent=tournament?'TOURNAMENT':'MATCH';ui.score.textContent='0 - 0';resetRound();ui.status.textContent=`${PLAYER_TEAM_NAME} VS ${enemyTeam.name}${enemyTeam.style?'［'+enemyTeam.style+'型］':''}　敵拠点を取るか全員OUTで勝利`;syncModeButtons()}
 function controlled(){return actors.find(a=>a.team===0&&a.alive&&!a.ai)||null}
 function transfer(){let n=actors.find(a=>a.team===0&&a.alive);if(n){actors.filter(a=>a.team===0).forEach(a=>a.ai=true);n.ai=false;syncButtons()}}
 function syncModeButtons(){if(mode==='field'){ui.S.innerHTML='A<small>情報</small>';ui.E.innerHTML='B<small>入る</small>'}else if(mode==='practice'){syncButtons();ui.E.innerHTML='B<small>練習終わる</small>'}else syncButtons()}
@@ -364,11 +375,20 @@ function resolveAttack(e){
 function blocked(def,atk){
   let ok=false;
   if(def.parryT>0){
-    def.parryT=0;def.invuln=Math.max(def.invuln,.10);
-    atk.stun=Math.max(atk.stun,def.type==='katana'?.30:.24);
-    knockApart(atk,def,def.type==='katana'?26:20,4);
-    effects.push({kind:'parry',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.30});
-    ui.status.textContent=def.type==='katana'?'受け流し！':'PARRY！';
+    // 通常の受け流し／パリィは成功時に明確な有利を作る。
+    // 攻撃は完全無効、守備側は弾かれず、攻撃側だけ長めに硬直。さらに自動の小反撃を出す。
+    def.parryT=0;def.invuln=Math.max(def.invuln,.22);
+    atk.stun=Math.max(atk.stun,def.type==='katana'?.62:.52);
+    safePush(atk,Math.cos(angle(def,atk))*18,Math.sin(angle(def,atk))*18);
+    effects.push({kind:'parry',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.38});
+    if(def.type==='katana'){
+      let sw={kind:'swing',weapon:'katana',parryRiposte:true,side:'r',x:def.x,y:def.y,a:angle(def,atk),range:138,arc:.92,t:.32,max:.32,windup:.025,active:.13,recovery:.165,delay:.025,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,specialHit:'受け流し反撃！'};
+      effects.push(sw);def.attackPose=sw;def.cd=Math.max(def.cd,.30);ui.status.textContent='受け流し成功！ 反撃';
+    }else{
+      let aa=angle(def,atk),side=Math.random()<.5?-1:1;safePush(def,Math.cos(aa+side*Math.PI/2)*24,Math.sin(aa+side*Math.PI/2)*24);
+      let th={kind:'thrust',weapon:'rapier',parryRiposte:true,side:'r',x:def.x,y:def.y,a:angle(def,atk),range:160,arc:.14,t:.31,max:.31,windup:.02,active:.13,recovery:.16,delay:.02,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,specialHit:'パリィ反撃！'};
+      effects.push(th);def.attackPose=th;def.cd=Math.max(def.cd,.28);ui.status.textContent='PARRY成功！ 反撃';
+    }
     return true;
   }
   if(def.counterT>0){def.counterT=0;def.invuln=Math.max(def.invuln,.24);atk.stun=Math.max(atk.stun,.18);effects.push({kind:'block',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.30});
@@ -510,10 +530,19 @@ function ai(a,dt){
   if(t.l==='spearGuard'&&d<132&&a.spearGuardCd<=0&&Math.random()<.025)hand(a,'l',true);
   if(a.type==='dagger'&&d<105&&Math.random()<.035)a.daggerGuard=true;
   else if(a.type==='dagger'&&d>132)a.daggerGuard=false;
-  const defending=a.shield||a.daggerGuard||a.spearGuard>0;
+  // 刀・レイピアCPUは相手が攻撃できる間合いに入った時、戦術に応じてタイミング防御を狙う。
+  // 完璧な反応にはせず、上位ランクほど『受けるチーム』らしい動きが出る程度。
+  if((a.type==='katana'||a.type==='rapier')&&d<145&&a.parryCd<=0&&a.cd<=0){
+    const chance=tactic==='defense'?.075:tactic==='balanced'?.045:.028;
+    if(Math.random()<chance){hand(a,'l',true);return}
+  }
+  const defending=a.shield||a.daggerGuard||a.spearGuard>0||a.parryT>0;
 
-  // スキルは通常攻撃より低頻度。状況が合う時だけ使う。
-  if(a.skillCd<=0&&!defending&&!outnumbered&&Math.random()<.008){if((a.type==='sword'&&d<125)||(a.type==='spear'&&d<190)||(a.type==='dagger'&&d<130)){useSkill(a);return}}
+  // スキルは通常攻撃より低頻度。武器と戦術に合う距離でだけ使用。
+  if(a.skillCd<=0&&!defending&&!outnumbered&&Math.random()<(tactic==='attack'?.011:.007)){
+    const skillRange=a.type==='spear'?200:a.type==='naginata'?185:a.type==='rapier'?155:a.type==='katana'?145:a.type==='dagger'?135:130;
+    if(d<skillRange){useSkill(a);return}
+  }
 
   // 攻撃可能距離なら攻撃。ただし人数不利では「当たる寸前」以外は無理に振らない。
   const attackDist=a.type==='spear'?158:a.type==='naginata'?150:a.type==='rapier'?132:a.type==='katana'?122:a.type==='dagger'?108:116;
@@ -634,16 +663,16 @@ function simulateCpuLeague(rankIndex){
   // 敵同士の3試合を簡易シミュレート。上位ランクほど拮抗しやすい。
   let pts=[0,0,0];for(let i=0;i<3;i++)for(let j=i+1;j<3;j++){let win=Math.random()<.5?i:j;pts[win]++}return pts;
 }
-function renderTournamentStandings(){if(!tournament)return;let box=q('#tournamentStandings');if(!box)return;let userWins=tournament.results.filter(r=>r.won).length;let cpu=tournament.cpuWins||[0,0,0];let rows=[{name:`${PLAYER_TEAM_NAME}（あなた）`,w:userWins,p:tournament.results.length},...ENEMY_TEAMS.map((e,i)=>({name:e.name,w:cpu[i]+(tournament.results[i]?.won===false?1:0),p:2+(tournament.results[i]?1:0)}))];rows.sort((a,b)=>b.w-a.w);box.innerHTML=rows.map((r,i)=>`<div class="standingRow"><b>${i+1}. ${r.name}</b><span>${r.w}勝</span></div>`).join('')}
+function renderTournamentStandings(){if(!tournament)return;let box=q('#tournamentStandings');if(!box)return;let userWins=tournament.results.filter(r=>r.won).length;let cpu=tournament.cpuWins||[0,0,0];let pool=tournament.teams||teamsForRank(tournament.rankIndex);let rows=[{name:`${PLAYER_TEAM_NAME}（あなた）`,w:userWins,p:tournament.results.length},...pool.map((e,i)=>({name:e.name,w:cpu[i]+(tournament.results[i]?.won===false?1:0),p:2+(tournament.results[i]?1:0)}))];rows.sort((a,b)=>b.w-a.w);box.innerHTML=rows.map((r,i)=>`<div class="standingRow"><b>${i+1}. ${r.name}</b><span>${r.w}勝</span></div>`).join('')}
 function openTournament(){renderTournamentMenu();q('#tournament').classList.remove('hidden');mode='menu';syncModeButtons()}
 function renderTournamentMenu(){let list=q('#rankList');if(!list)return;list.innerHTML=RANKS.map((r,i)=>`<button class="rankBtn" data-rank="${i}" ${i>progress.unlocked?'disabled':''}><b>${r.label}　${r.name}</b><small>${i>progress.unlocked?'未解放':'3チーム総当たり・優勝で次ランク解放'}</small></button>`).join('');q('#tournamentStandings').innerHTML='<p class="note">大会を選ぶと3チームと順番に対戦します。</p>';list.querySelectorAll('button:not([disabled])').forEach(b=>b.onclick=()=>startTournament(+b.dataset.rank))}
 function startTournament(rankIndex){
-  tournament={rankIndex,index:0,results:[],cpuWins:simulateCpuLeague(rankIndex)};q('#tournament').classList.add('hidden');enemyTeam=ENEMY_TEAMS[0];startMatch();
+  let pool=teamsForRank(rankIndex);tournament={rankIndex,index:0,results:[],cpuWins:simulateCpuLeague(rankIndex),teams:pool};q('#tournament').classList.add('hidden');enemyTeam=pool[0];startMatch();
 }
 function nextTournamentStep(){
   ui.result.classList.add('hidden');
   if(!tournament)return;
-  if(tournament.index<3){enemyTeam=ENEMY_TEAMS[tournament.index];startMatch();return}
+  if(tournament.index<3){enemyTeam=tournament.teams[tournament.index];startMatch();return}
   const wins=tournament.results.filter(r=>r.won).length;
   // 3戦中2勝以上を優勝条件にする。短い大会でも手応えが出る。
   const champion=wins>=2;
