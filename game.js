@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.14';
+const VERSION='v0.15';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill')};
 function q(s){return document.querySelector(s)}
@@ -7,27 +7,22 @@ const versionEl=q('#version');if(versionEl)versionEl.textContent=VERSION;const v
 const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180},spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165},dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:230},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130}};
 let formation=['sword','spear','dagger'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[];
 const court={x:35,y:82,w:1210,h:556};
-// v0.14: 左右を広げ、中央の主戦場を広めにした二股→合流→二股。
+// v0.15: 左右を広げ、中央の主戦場を広めにした二股→合流→二股。
 // 斜め壁は使わず、段差状の矩形を組み合わせてルートを絞る。
 // 左右の大きな島で上下二股、中央は上下から張り出す段差壁で一本に合流。
 // 中央通路は以前より広く、複数人が戦える主戦場。さらに中央壁の間に細い1人用の抜け道を残す。
 const obstacles=[
- // 左の分岐島（段差シルエット）
- {x:250,y:205,w:185,h:310},
- {x:215,y:270,w:35,h:180},
- {x:435,y:270,w:35,h:180},
- // 右の分岐島（左右対称）
- {x:845,y:205,w:185,h:310},
- {x:810,y:270,w:35,h:180},
- {x:1030,y:270,w:35,h:180},
- // 中央の上下ゲート。中央主戦場を広めに確保。
- // 段差で徐々に中央へ絞り、上下ルートがここで合流する。
- {x:535,y:82,w:210,h:78},
- {x:565,y:160,w:150,h:58},
- {x:595,y:218,w:90,h:42},
- {x:535,y:560,w:210,h:78},
- {x:565,y:502,w:150,h:58},
- {x:595,y:460,w:90,h:42}
+ // v0.15: 分岐島を小型化。上下を通る余白を増やし、中央の主戦場も見やすくする。
+ // 当たり判定と見た目を一致させるため、楕円そのものではなく大きく丸めた競技用クッション障害物。
+ {x:275,y:235,w:150,h:250,oval:true},
+ {x:855,y:235,w:150,h:250,oval:true},
+ // 中央ゲートも一回り小型化。二股→合流→二股の骨格は維持。
+ {x:555,y:82,w:170,h:58,oval:true},
+ {x:585,y:140,w:110,h:42,oval:true},
+ {x:610,y:182,w:60,h:30,oval:true},
+ {x:555,y:580,w:170,h:58,oval:true},
+ {x:585,y:538,w:110,h:42,oval:true},
+ {x:610,y:508,w:60,h:30,oval:true}
 ];
 const fieldPlayer={x:545,y:525,r:22,speed:235};
 const arenaGate={x:715,y:325,r:82};
@@ -37,7 +32,7 @@ q('#start').onclick=()=>{ui.setup.classList.add('hidden');startMatch()};q('#back
 function unit(team,i,type){
   // 壁から十分離した固定スポーン。開始直後に壁へ埋まらないよう3レーン中央へ配置。
   const ys=[155,360,565], bx=team===0?155:1125;
-  return {team,i,type,x:bx,y:ys[i],r:27,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,ai:team===1||i>0,species:(i%3),handAnimL:0,handAnimR:0,attackPose:null}
+  return {team,i,type,x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,ai:team===1||i>0,species:(i%3),handAnimL:0,handAnimR:0,attackPose:null}
 }
 function resetRound(){actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t)));['sword','spear','dagger'].forEach((t,i)=>actors.push(unit(1,i,t)));roundOver=0;effects=[];syncButtons()}
 function startMatch(){mode='match';blue=red=0;ui.mode.textContent='MATCH';ui.score.textContent='0 - 0';resetRound();ui.status.textContent='敵拠点を取るか、全員OUTで勝利';syncModeButtons()}
@@ -322,10 +317,10 @@ function place(px,py,n,ico){x.font='70px sans-serif';x.fillText(ico,px,py);x.fon
 function drawCuteFieldAnimal(px,py){x.save();x.translate(px,py);x.shadowBlur=8;x.shadowColor='#356b45';x.fillStyle='#62c95b';x.beginPath();x.arc(0,4,21,0,Math.PI*2);x.fill();
 // 前作風に目玉を頭の上へしっかり飛び出させる
 x.beginPath();x.arc(-13,-18,10,0,Math.PI*2);x.arc(13,-18,10,0,Math.PI*2);x.fill();x.fillStyle='#fffbe7';x.beginPath();x.arc(-13,-19,7,0,Math.PI*2);x.arc(13,-19,7,0,Math.PI*2);x.fill();x.fillStyle='#24392f';x.beginPath();x.arc(-12,-19,3,0,Math.PI*2);x.arc(12,-19,3,0,Math.PI*2);x.fill();x.strokeStyle='#234632';x.lineWidth=2.5;x.beginPath();x.arc(0,5,10,.2,2.9);x.stroke();x.fillStyle='#355a76';roundRect(-18,14,36,13,5);x.fill();x.fillStyle='#62c95b';x.beginPath();x.ellipse(-14,31,7,14,.35,0,Math.PI*2);x.ellipse(14,31,7,14,-.35,0,Math.PI*2);x.fill();x.shadowBlur=0;x.restore()}
-function drawMatch(){x.fillStyle='#688ca1';x.fillRect(0,0,W,H);x.fillStyle='#a9d0ef';x.fillRect(court.x,court.y,court.w,court.h);x.strokeStyle='#fff7d8';x.lineWidth=5;x.strokeRect(court.x,court.y,court.w,court.h);x.setLineDash([10,11]);x.beginPath();x.moveTo(640,court.y);x.lineTo(640,court.y+court.h);x.stroke();x.setLineDash([]);for(let o of obstacles){x.fillStyle='#eef0e7';roundRect(o.x,o.y,o.w,o.h,13);x.fill();x.fillStyle='#d6ddd6';roundRect(o.x+8,o.y+8,o.w-16,o.h-16,10);x.fill()}base(130,360,'#4d83dc');base(1150,360,'#e26368');for(let a of actors)drawActor(a);for(let e of effects)drawEffect(e)}
+function drawMatch(){x.fillStyle='#688ca1';x.fillRect(0,0,W,H);x.fillStyle='#a9d0ef';x.fillRect(court.x,court.y,court.w,court.h);x.strokeStyle='#fff7d8';x.lineWidth=5;x.strokeRect(court.x,court.y,court.w,court.h);x.setLineDash([10,11]);x.beginPath();x.moveTo(640,court.y);x.lineTo(640,court.y+court.h);x.stroke();x.setLineDash([]);for(let o of obstacles){let rr=o.oval?Math.min(o.w,o.h)*.42:13;x.fillStyle='#eef0e7';roundRect(o.x,o.y,o.w,o.h,rr);x.fill();x.fillStyle='#d6ddd6';roundRect(o.x+7,o.y+7,o.w-14,o.h-14,Math.max(8,rr-7));x.fill()}base(130,360,'#4d83dc');base(1150,360,'#e26368');for(let a of actors)drawActor(a);for(let e of effects)drawEffect(e)}
 function roundRect(px,py,w,h,r){x.beginPath();x.roundRect(px,py,w,h,r)}
 function base(px,py,col){x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.arc(px,py,35,0,Math.PI*2);x.stroke();x.globalAlpha=.22;x.fillStyle=col;x.fill();x.globalAlpha=1}
-function drawActor(a){if(!a.alive)return;x.save();x.translate(a.x,a.y);let teamCol=a.team?'#e56f74':'#5a90df',fur=a.species===0?'#65bf58':a.species===1?'#eee8dc':'#df9a55';
+function drawActor(a){if(!a.alive)return;x.save();x.translate(a.x,a.y);x.scale(1.6,1.6);let teamCol=a.team?'#e56f74':'#5a90df',fur=a.species===0?'#65bf58':a.species===1?'#eee8dc':'#df9a55';
 // 体と頭は常に上向き
 x.fillStyle=teamCol;roundRect(-19,4,38,30,10);x.fill();x.fillStyle=fur;x.beginPath();x.arc(0,-6,22,0,Math.PI*2);x.fill();
 if(a.species===0){
@@ -342,7 +337,7 @@ if(a.species===0){
 }
 x.strokeStyle='#3f493f';x.lineWidth=2;x.beginPath();x.arc(0,-2,7,.3,2.8);x.stroke();
 // 武器だけターゲット方向へ向ける
-x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;if(!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}else{ /* 回転槍はdrawEffect側で一本だけ描画 */ }drawWeapon.owner=null;x.restore();if(a===controlled()){x.strokeStyle='#fff';x.lineWidth=3;x.beginPath();x.arc(0,2,34,0,Math.PI*2);x.stroke()}x.restore();x.fillStyle='#17382f';x.font='11px sans-serif';x.textAlign='center';x.fillText(TYPES[a.type].name,a.x,a.y+49);x.textAlign='start'}
+x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;if(!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}else{ /* 回転槍はdrawEffect側で一本だけ描画 */ }drawWeapon.owner=null;x.restore();if(a===controlled()){x.strokeStyle='#fff';x.lineWidth=3;x.beginPath();x.arc(0,2,34,0,Math.PI*2);x.stroke()}x.restore();x.fillStyle='#17382f';x.font='11px sans-serif';x.textAlign='center';x.fillText(TYPES[a.type].name,a.x,a.y+67);x.textAlign='start'}
 function weaponColor(k){return k==='spear'?'#63f6ff':k&&k.startsWith('dagger')?'#ff75df':'#ffe66d'}
 function drawWeapon(k,side,active,anim=0){
  x.save();x.lineCap='round';
