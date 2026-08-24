@@ -7,3 +7,4 @@
 #rotate .frogRow span:nth-child(2){font-size:64px;transform:translateY(-3px)}
 #rotate .rotateTitle{font-size:28px;font-weight:900}
 #rotate .rotateVersion{font-size:14px;opacity:.86;letter-spacing:.05em}
+.slotControls{display:grid;grid-template-columns:1fr 1fr;gap:8px}.slotControls select{min-width:0}@media(max-height:500px){.slotControls{grid-template-columns:1fr 1fr;gap:6px}}
