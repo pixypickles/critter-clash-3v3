@@ -1,22 +1,33 @@
 'use strict';
-const VERSION='v0.13';
+const VERSION='v0.14';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill')};
 function q(s){return document.querySelector(s)}
 const versionEl=q('#version');if(versionEl)versionEl.textContent=VERSION;const versionBadge=q('#versionBadge');if(versionBadge)versionBadge.textContent=`Prototype ${VERSION}`;
 const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180},spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165},dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:230},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130}};
 let formation=['sword','spear','dagger'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[];
-const court={x:90,y:82,w:1100,h:556};
-// v0.13: 二股 → 中央の一本道 → 二股。
-// 左右の島状障害物で一度上下へ分かれ、中央ゲートでは必ず一本へ合流する。
-// 中央ゲートは一人が通りやすい程度の細めの通路。抜けた先で再び上下へ分岐できる。
+const court={x:35,y:82,w:1210,h:556};
+// v0.14: 左右を広げ、中央の主戦場を広めにした二股→合流→二股。
+// 斜め壁は使わず、段差状の矩形を組み合わせてルートを絞る。
+// 左右の大きな島で上下二股、中央は上下から張り出す段差壁で一本に合流。
+// 中央通路は以前より広く、複数人が戦える主戦場。さらに中央壁の間に細い1人用の抜け道を残す。
 const obstacles=[
- // 左右の分岐用アイランド（左右対称）
- {x:300,y:220,w:180,h:280},
- {x:800,y:220,w:180,h:280},
- // 中央の上下ブロック。外周まで塞いで中央の細道へ必ず集約する。
- {x:600,y:82,w:80,h:213},
- {x:600,y:425,w:80,h:213}
+ // 左の分岐島（段差シルエット）
+ {x:250,y:205,w:185,h:310},
+ {x:215,y:270,w:35,h:180},
+ {x:435,y:270,w:35,h:180},
+ // 右の分岐島（左右対称）
+ {x:845,y:205,w:185,h:310},
+ {x:810,y:270,w:35,h:180},
+ {x:1030,y:270,w:35,h:180},
+ // 中央の上下ゲート。中央主戦場を広めに確保。
+ // 段差で徐々に中央へ絞り、上下ルートがここで合流する。
+ {x:535,y:82,w:210,h:78},
+ {x:565,y:160,w:150,h:58},
+ {x:595,y:218,w:90,h:42},
+ {x:535,y:560,w:210,h:78},
+ {x:565,y:502,w:150,h:58},
+ {x:595,y:460,w:90,h:42}
 ];
 const fieldPlayer={x:545,y:525,r:22,speed:235};
 const arenaGate={x:715,y:325,r:82};
