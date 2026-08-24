@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.25';
+const VERSION='v0.26';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -211,7 +211,7 @@ function hand(a,side,down=true){
     if(down&&a.spearGuard<=0&&a.spearGuardCd<=0){
       let e=nearestEnemy(a);if(e)a.face=angle(a,e);
       a.spearGuard=.72;a.spearGuardCd=1.55;a.cd=Math.max(a.cd,.28);
-      effects.push({kind:'spearGuard',owner:a,x:a.x,y:a.y,t:.72,max:.72,team:a.team});
+      effects.push({kind:'spearGuard',owner:a,weapon:a.type,x:a.x,y:a.y,t:.72,max:.72,team:a.team});
     }
     return;
   }
@@ -358,7 +358,7 @@ function resolveAttack(e){
   }
   for(let b of hit){
     if(blocked(b,a)){if(e.knockback)knockApart(a,b,e.knockback,12);continue}
-    combatHit(b,a);
+    combatHit(b,a,e);
   }
 }
 function blocked(def,atk){
@@ -372,8 +372,8 @@ function blocked(def,atk){
     return true;
   }
   if(def.counterT>0){def.counterT=0;def.invuln=Math.max(def.invuln,.24);atk.stun=Math.max(atk.stun,.18);effects.push({kind:'block',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.30});
-    if(def.type==='katana'){let sw={kind:'swing',weapon:'katana',skill:true,side:'r',x:def.x,y:def.y,a:angle(def,atk),range:142,arc:1.10,t:.38,max:.38,windup:.05,active:.14,recovery:.19,delay:.04,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false};effects.push(sw);def.attackPose=sw;}
-    else if(def.type==='rapier'){let aa=angle(def,atk)+Math.PI/2*(Math.random()<.5?-1:1);safePush(def,Math.cos(aa)*58,Math.sin(aa)*58);def.face=angle(def,atk);let th={kind:'thrust',weapon:'rapier',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:185,arc:.16,t:.42,max:.42,windup:.04,active:.15,recovery:.23,delay:.03,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:64,lungeApplied:false};effects.push(th);def.attackPose=th;}return true;}
+    if(def.type==='katana'){let sw={kind:'swing',weapon:'katana',skill:true,side:'r',x:def.x,y:def.y,a:angle(def,atk),range:142,arc:1.10,t:.38,max:.38,windup:.05,active:.14,recovery:.19,delay:.04,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,specialHit:'流し斬り HIT!'};effects.push(sw);def.attackPose=sw;}
+    else if(def.type==='rapier'){let aa=angle(def,atk)+Math.PI/2*(Math.random()<.5?-1:1);safePush(def,Math.cos(aa)*58,Math.sin(aa)*58);def.face=angle(def,atk);let th={kind:'thrust',weapon:'rapier',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:185,arc:.16,t:.42,max:.42,windup:.04,active:.15,recovery:.23,delay:.03,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:64,lungeApplied:false,specialHit:'幻影斬り HIT!'};effects.push(th);def.attackPose=th;}return true;}
   if(def.spearGuard>0||def.daggerGuard)ok=true;
   else if(def.shield){let dual=TYPES[def.type].r==='dualShield';ok=dual||Math.abs(norm(angle(def,atk)-def.shieldA))<1.18}
   if(ok){
@@ -384,8 +384,9 @@ function blocked(def,atk){
   return ok;
 }
 
-function combatHit(target,attacker){
-  if(mode==='practice'){practiceHit(target,attacker);return}
+function combatHit(target,attacker,source){
+  if(source&&source.specialHit){effects.push({kind:'skillHit',x:target.x,y:target.y,text:source.specialHit,t:.68,max:.68});ui.status.textContent=source.specialHit;}
+  if(mode==='practice'){practiceHit(target,attacker,source);return}
   if(mode==='boss'&&target.boss){target.hp=Math.max(0,(target.hp||3)-1);target.invuln=.55;target.stun=Math.max(target.stun,.34);knockApart(attacker,target,12,22);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});ui.score.textContent=`BOSS HP ${target.hp}/3`;ui.status.textContent=`ボスにHIT！ 残り ${target.hp}`;if(target.hp<=0){target.alive=false;setTimeout(()=>finishBoss(true),450)}return}
   target.alive=false;effects.push({kind:'out',x:target.x,y:target.y,t:.55});if(!target.ai)transfer();
 }
@@ -395,7 +396,7 @@ function resolveSpin(e){
     if(!b.alive||b.team===a.team||b.invuln>0)continue;
     if(dist(a,b)>128+b.r||segmentHitsWall(a.x,a.y,b.x,b.y,1))continue;
     if(blocked(b,a))continue;
-    combatHit(b,a);
+    combatHit(b,a,e);
   }
 }
 function collides(nx,ny,r){return activeObstacles().some(o=>nx+r>o.x&&nx-r<o.x+o.w&&ny+r>o.y&&ny-r<o.y+o.h)}
@@ -471,12 +472,23 @@ function ai(a,dt){
   const nearAllies=allies.filter(b=>dist(a,b)<205).length;
   const outnumbered=nearEnemies>nearAllies+1;const tactic=a.tactic||'balanced';
 
-  // 練習相手はカウンター練習用。間合いに入ると高頻度で攻撃し、離れたら素直に詰める。
+  // 練習相手はカウンター練習用。攻撃はするが、連打せず『構える→1回攻撃→間を置く』。
   if(mode==='practice'&&a.practiceAggro){
     a.face=angle(a,e);
-    if(d<142&&a.cd<=0&&a.stun<=0){hand(a,'r',true);return;}
-    if(d>104){move(a,Math.cos(a.face),Math.sin(a.face),dt);return;}
-    let side=((Math.floor(a.aiClock*1.7)%2)?1:-1);move(a,Math.cos(a.face+side*Math.PI/2)*.45,Math.sin(a.face+side*Math.PI/2)*.45,dt);return;
+    a.practiceAttackWait=Math.max(0,(a.practiceAttackWait||0)-dt);
+    a.practiceRetreat=Math.max(0,(a.practiceRetreat||0)-dt);
+    if(a.practiceRetreat>0){
+      let side=((Math.floor(a.aiClock*1.1)%2)?1:-1);
+      let ang=a.face+Math.PI+side*.28;move(a,Math.cos(ang)*.55,Math.sin(ang)*.55,dt);return;
+    }
+    if(d<138&&a.cd<=0&&a.stun<=0&&a.practiceAttackWait<=0){
+      hand(a,'r',true);
+      a.practiceAttackWait=.95+Math.random()*.55;
+      a.practiceRetreat=.28+Math.random()*.18;
+      return;
+    }
+    if(d>126){move(a,Math.cos(a.face)*.58,Math.sin(a.face)*.58,dt);return;}
+    let side=((Math.floor(a.aiClock*.9)%2)?1:-1);move(a,Math.cos(a.face+side*Math.PI/2)*.28,Math.sin(a.face+side*Math.PI/2)*.28,dt);return;
   }
 
   // 防御系も棒立ちにはしないが、以前ほど頻繁に防御し続けない。
@@ -585,10 +597,10 @@ function update(dt){
 }
 
 function startPractice(){
-  mode='practice';roundOver=0;practiceHits=[0,0];enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['balanced']};actors=[];let p=unit(0,0,formation[0],formationSkills[0]);p.x=470;p.y=360;p.ai=false;p.tactic='balanced';let e=unit(1,0,'sword','spinSlash');e.x=810;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;actors=[p,e];effects=[];ui.mode.textContent='PRACTICE';ui.score.textContent='0 - 0';ui.status.textContent='1対1練習：OUTなし・ヒット数だけ記録';syncModeButtons();updatePracticeHud();
+  mode='practice';roundOver=0;practiceHits=[0,0];enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['balanced']};actors=[];let p=unit(0,0,formation[0],formationSkills[0]);p.x=470;p.y=360;p.ai=false;p.tactic='balanced';let e=unit(1,0,'sword','spinSlash');e.x=810;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;e.practiceAttackWait=.8;e.practiceRetreat=0;actors=[p,e];effects=[];ui.mode.textContent='PRACTICE';ui.score.textContent='0 - 0';ui.status.textContent='1対1練習：OUTなし・ヒット数だけ記録';syncModeButtons();updatePracticeHud();
 }
 function updatePracticeHud(){if(ui.practiceScore)ui.practiceScore.textContent=`あなた ${practiceHits[0]} - ${practiceHits[1]} 相手`}
-function practiceHit(target,attacker){practiceHits[attacker.team]++;target.invuln=.45;target.stun=Math.max(target.stun,.28);knockApart(attacker,target,10,30);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});updatePracticeHud();ui.score.textContent=`${practiceHits[0]} - ${practiceHits[1]}`}
+function practiceHit(target,attacker,source){practiceHits[attacker.team]++;target.invuln=.45;target.stun=Math.max(target.stun,.28);knockApart(attacker,target,10,30);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});updatePracticeHud();ui.score.textContent=`${practiceHits[0]} - ${practiceHits[1]}`}
 function endPractice(){mode='field';actors=[];effects=[];ui.mode.textContent='FIELD';ui.score.textContent='0 - 0';ui.status.textContent='練習終了。ホーム・競技場・練習場へ移動できます';syncModeButtons()}
 function winRound(team,why){if(roundOver)return;roundOver=1;team===0?blue++:red++;ui.score.textContent=`${blue} - ${red}`;ui.status.textContent=(team===0?PLAYER_TEAM_NAME+' ':'相手チーム ')+why;if(blue>=2||red>=2)setTimeout(()=>finishMatch(blue>red,why),700);else setTimeout(resetRound,850)}
 function finishMatch(won,why){
@@ -707,6 +719,7 @@ function drawWeapon(k,side,active,anim=0){
  }else{
    let col=weaponColor(k),len=k==='spear'?92:k==='naginata'?112:k==='katana'?74:k==='rapier'?82:k.startsWith('dagger')?50:58;
    let owner=drawWeapon.owner,guarding=owner&&owner.daggerGuard&&k==='daggerAttack';
+   if(owner&&owner.spearGuard>0&&(k==='spear'||k==='naginata')){x.restore();return;}
    let baseY=side*(k.startsWith('dagger')?(guarding?12:30):14),tipY=side*(k.startsWith('dagger')?(guarding?7:42):20);
    if(k==='spear'||k==='naginata'||k==='rapier'){baseY=0;tipY=0;}
    if(k.startsWith('dagger')&&anim>0){let p=Math.min(1,anim/.24);let swing=Math.sin((1-p)*Math.PI)*22;tipY-=side*swing;baseY+=side*4}
@@ -755,11 +768,12 @@ function drawEffect(e){
      x.shadowBlur=18;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(sx,sy);x.lineTo(ex,ey);x.stroke();
    }
  }else if(e.kind==='spearGuard'){
-   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,col=weaponColor('spear'),half=58,mid=36;x.translate(a.x+Math.cos(a.face)*mid,a.y+Math.sin(a.face)*mid);x.rotate(a.face+p*22);x.globalAlpha=.82;x.lineCap='round';x.shadowBlur=18;x.shadowColor=col;x.strokeStyle='#8a6d43';x.lineWidth=5;x.beginPath();x.moveTo(-half,0);x.lineTo(half,0);x.stroke();x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(-half+12,0);x.lineTo(half,0);x.stroke();x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.moveTo(-half+16,0);x.lineTo(half-3,0);x.stroke();}
+   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,w=e.weapon||a.type,col=weaponColor(w),half=w==='naginata'?78:58,mid=w==='naginata'?42:36;x.translate(a.x+Math.cos(a.face)*mid,a.y+Math.sin(a.face)*mid);x.rotate(a.face+p*22);x.globalAlpha=.82;x.lineCap='round';x.shadowBlur=18;x.shadowColor=col;x.strokeStyle='#8a6d43';x.lineWidth=5;x.beginPath();x.moveTo(-half,0);x.lineTo(half,0);x.stroke();x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(-half+12,0);x.lineTo(half,0);x.stroke();x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.moveTo(-half+16,0);x.lineTo(half-3,0);x.stroke();}
  }else if(e.kind==='parryFlash'){
    let a=e.owner;if(a&&a.alive){let col=weaponColor(e.weapon);x.globalAlpha=.28;x.strokeStyle=col;x.shadowBlur=16;x.shadowColor=col;x.lineWidth=8;x.beginPath();x.arc(a.x,a.y,50,a.face-.9,a.face+.9);x.stroke();x.shadowBlur=0}
  }else if(e.kind==='parry'){
    x.globalAlpha=Math.min(1,e.t*5);x.strokeStyle='#eaffff';x.shadowBlur=18;x.shadowColor='#7eeaff';x.lineWidth=5;x.beginPath();x.arc(e.x,e.y,28+(1-e.t/.30)*26,0,Math.PI*2);x.stroke();x.shadowBlur=0;x.fillStyle='#fff';x.font='bold 24px sans-serif';x.fillText('PARRY!',e.x-42,e.y-38);
+ }else if(e.kind==='skillHit'){let p=1-e.t/e.max;x.globalAlpha=Math.min(1,e.t*5);x.strokeStyle='#fff7a6';x.shadowBlur=22;x.shadowColor='#ffe66d';x.lineWidth=6;x.beginPath();x.arc(e.x,e.y,34+p*38,0,Math.PI*2);x.stroke();x.shadowBlur=0;x.fillStyle='#fff7a6';x.font='bold 25px sans-serif';x.fillText(e.text,e.x-70,e.y-58);
  }else if(e.kind==='practiceHit'){x.globalAlpha=Math.min(1,e.t*4);x.fillStyle='#fff7a6';x.font='bold 28px sans-serif';x.fillText('HIT!',e.x-30,e.y-48);
  }else if(e.kind==='stepDust'){
    let p=1-e.t/e.max;x.globalAlpha=.32*(1-p);x.strokeStyle='#ffffff';x.lineWidth=5;x.beginPath();x.arc(e.x,e.y,18+p*28,0,Math.PI*2);x.stroke();
