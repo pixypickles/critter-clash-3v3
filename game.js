@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.26';
+const VERSION='v0.27';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -476,19 +476,31 @@ function ai(a,dt){
   if(mode==='practice'&&a.practiceAggro){
     a.face=angle(a,e);
     a.practiceAttackWait=Math.max(0,(a.practiceAttackWait||0)-dt);
+    a.practiceAttackHold=Math.max(0,(a.practiceAttackHold||0)-dt);
     a.practiceRetreat=Math.max(0,(a.practiceRetreat||0)-dt);
+
+    // 攻撃を出したあとは、剣の発生～有効時間が終わるまでその場で構える。
+    // 以前は振り始めた瞬間に後退してしまい、届かない位置で空振りしやすかった。
+    if(a.practiceAttackHold>0)return;
+
     if(a.practiceRetreat>0){
       let side=((Math.floor(a.aiClock*1.1)%2)?1:-1);
-      let ang=a.face+Math.PI+side*.28;move(a,Math.cos(ang)*.55,Math.sin(ang)*.55,dt);return;
+      let ang=a.face+Math.PI+side*.18;
+      move(a,Math.cos(ang)*.36,Math.sin(ang)*.36,dt);return;
     }
-    if(d<138&&a.cd<=0&&a.stun<=0&&a.practiceAttackWait<=0){
+
+    // 剣の実ヒット距離に入ってから振る。密着しすぎたら少しだけ間合いを作る。
+    const sweetMin=102,sweetMax=128;
+    if(d>=sweetMin&&d<=sweetMax&&a.cd<=0&&a.stun<=0&&a.practiceAttackWait<=0){
       hand(a,'r',true);
-      a.practiceAttackWait=.95+Math.random()*.55;
-      a.practiceRetreat=.28+Math.random()*.18;
+      a.practiceAttackHold=.78;
+      a.practiceAttackWait=1.05+Math.random()*.45;
+      a.practiceRetreat=.20+Math.random()*.10;
       return;
     }
-    if(d>126){move(a,Math.cos(a.face)*.58,Math.sin(a.face)*.58,dt);return;}
-    let side=((Math.floor(a.aiClock*.9)%2)?1:-1);move(a,Math.cos(a.face+side*Math.PI/2)*.28,Math.sin(a.face+side*Math.PI/2)*.28,dt);return;
+    if(d>sweetMax){move(a,Math.cos(a.face)*.42,Math.sin(a.face)*.42,dt);return;}
+    if(d<sweetMin){let ang=a.face+Math.PI;move(a,Math.cos(ang)*.22,Math.sin(ang)*.22,dt);return;}
+    return;
   }
 
   // 防御系も棒立ちにはしないが、以前ほど頻繁に防御し続けない。
@@ -597,7 +609,7 @@ function update(dt){
 }
 
 function startPractice(){
-  mode='practice';roundOver=0;practiceHits=[0,0];enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['balanced']};actors=[];let p=unit(0,0,formation[0],formationSkills[0]);p.x=470;p.y=360;p.ai=false;p.tactic='balanced';let e=unit(1,0,'sword','spinSlash');e.x=810;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;e.practiceAttackWait=.8;e.practiceRetreat=0;actors=[p,e];effects=[];ui.mode.textContent='PRACTICE';ui.score.textContent='0 - 0';ui.status.textContent='1対1練習：OUTなし・ヒット数だけ記録';syncModeButtons();updatePracticeHud();
+  mode='practice';roundOver=0;practiceHits=[0,0];enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['balanced']};actors=[];let p=unit(0,0,formation[0],formationSkills[0]);p.x=470;p.y=360;p.ai=false;p.tactic='balanced';let e=unit(1,0,'sword','spinSlash');e.x=810;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;e.practiceAttackWait=.8;e.practiceAttackHold=0;e.practiceRetreat=0;actors=[p,e];effects=[];ui.mode.textContent='PRACTICE';ui.score.textContent='0 - 0';ui.status.textContent='1対1練習：OUTなし・ヒット数だけ記録';syncModeButtons();updatePracticeHud();
 }
 function updatePracticeHud(){if(ui.practiceScore)ui.practiceScore.textContent=`あなた ${practiceHits[0]} - ${practiceHits[1]} 相手`}
 function practiceHit(target,attacker,source){practiceHits[attacker.team]++;target.invuln=.45;target.stun=Math.max(target.stun,.28);knockApart(attacker,target,10,30);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});updatePracticeHud();ui.score.textContent=`${practiceHits[0]} - ${practiceHits[1]}`}
@@ -737,10 +749,22 @@ function drawWeapon(k,side,active,anim=0){
    if(owner&&owner.parryT>0&&(k==='katana'||k==='rapier')){
      x.rotate(k==='katana'?-0.72:-0.48);baseY*=.25;tipY*=.25;
    }
-   const drawBlade=(by,ty)=>{x.shadowBlur=18;x.shadowColor=col;x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo((k==='spear'||k==='naginata')?-18:7,by);x.lineTo((k==='spear'||k==='naginata')?18:17,by);x.stroke();x.strokeStyle=col;x.lineWidth=7;x.beginPath();x.moveTo((k==='spear'||k==='naginata')?16:16,by);x.lineTo(len,ty);x.stroke();x.shadowBlur=0;x.strokeStyle='#ffffff';x.lineWidth=2;x.beginPath();x.moveTo((k==='spear'||k==='naginata')?20:19,by);x.lineTo(len-2,ty);x.stroke();};
+   const drawBlade=(by,ty)=>{
+     const pole=(k==='spear'||k==='naginata');
+     x.shadowBlur=18;x.shadowColor=col;
+     if(pole){
+       // 槍・薙刀は持ち手まで同系色で発光させ、回転時に茶色い棒だけが目立たないようにする。
+       x.strokeStyle=col;x.lineWidth=7;x.beginPath();x.moveTo(-20,by);x.lineTo(len,ty);x.stroke();
+       x.shadowBlur=0;x.strokeStyle='#ffffff';x.globalAlpha=.72;x.lineWidth=2;x.beginPath();x.moveTo(-17,by);x.lineTo(len-2,ty);x.stroke();x.globalAlpha=1;
+       x.strokeStyle='#36545a';x.globalAlpha=.55;x.lineWidth=4;x.beginPath();x.moveTo(-8,by);x.lineTo(10,by);x.stroke();x.globalAlpha=1;
+     }else{
+       x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo(7,by);x.lineTo(17,by);x.stroke();
+       x.strokeStyle=col;x.lineWidth=7;x.beginPath();x.moveTo(16,by);x.lineTo(len,ty);x.stroke();
+       x.shadowBlur=0;x.strokeStyle='#ffffff';x.lineWidth=2;x.beginPath();x.moveTo(19,by);x.lineTo(len-2,ty);x.stroke();
+     }
+   };
    drawBlade(baseY,tipY);
    if(k==='daggerAttack'&&guarding)drawBlade(-baseY,-tipY);
-   if(k==='spear'||k==='naginata'){x.strokeStyle='#8a6d43';x.lineWidth=4;x.beginPath();x.moveTo(-20,0);x.lineTo(16,0);x.stroke();}
  }
  x.restore();
 }
@@ -768,7 +792,14 @@ function drawEffect(e){
      x.shadowBlur=18;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(sx,sy);x.lineTo(ex,ey);x.stroke();
    }
  }else if(e.kind==='spearGuard'){
-   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,w=e.weapon||a.type,col=weaponColor(w),half=w==='naginata'?78:58,mid=w==='naginata'?42:36;x.translate(a.x+Math.cos(a.face)*mid,a.y+Math.sin(a.face)*mid);x.rotate(a.face+p*22);x.globalAlpha=.82;x.lineCap='round';x.shadowBlur=18;x.shadowColor=col;x.strokeStyle='#8a6d43';x.lineWidth=5;x.beginPath();x.moveTo(-half,0);x.lineTo(half,0);x.stroke();x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(-half+12,0);x.lineTo(half,0);x.stroke();x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.moveTo(-half+16,0);x.lineTo(half-3,0);x.stroke();}
+   let a=e.owner;if(a&&a.alive){
+     let p=1-e.t/e.max,w=e.weapon||a.type,col=weaponColor(w),half=w==='naginata'?78:58,mid=w==='naginata'?42:36;
+     x.translate(a.x+Math.cos(a.face)*mid,a.y+Math.sin(a.face)*mid);x.rotate(a.face+p*22);x.globalAlpha=.86;x.lineCap='round';x.shadowBlur=18;x.shadowColor=col;
+     // 回転中も一本全体を発光させる。中心のグリップだけ薄く残す。
+     x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(-half,0);x.lineTo(half,0);x.stroke();
+     x.shadowBlur=0;x.strokeStyle='#fff';x.globalAlpha=.64;x.lineWidth=2;x.beginPath();x.moveTo(-half+3,0);x.lineTo(half-3,0);x.stroke();
+     x.globalAlpha=.55;x.strokeStyle='#36545a';x.lineWidth=4;x.beginPath();x.moveTo(-9,0);x.lineTo(9,0);x.stroke();x.globalAlpha=1;
+   }
  }else if(e.kind==='parryFlash'){
    let a=e.owner;if(a&&a.alive){let col=weaponColor(e.weapon);x.globalAlpha=.28;x.strokeStyle=col;x.shadowBlur=16;x.shadowColor=col;x.lineWidth=8;x.beginPath();x.arc(a.x,a.y,50,a.face-.9,a.face+.9);x.stroke();x.shadowBlur=0}
  }else if(e.kind==='parry'){
