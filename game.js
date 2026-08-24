@@ -1,7 +1,9 @@
 'use strict';
+const VERSION='v0.5';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill')};
 function q(s){return document.querySelector(s)}
+const versionEl=q('#version');if(versionEl)versionEl.textContent=VERSION;
 const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180},spear:{name:'槍＋盾',r:'spear',l:'shield',speed:165},dagger:{name:'短剣二刀流',r:'daggerR',l:'daggerL',speed:210},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130}};
 let formation=['sword','spear','dagger'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[];
 const court={x:145,y:86,w:990,h:548};
@@ -35,9 +37,36 @@ function hand(a,side,down=true){if(mode!=='match'||!a||!a.alive||a.stun>0)return
 function attack(a,kind){let range=kind==='spear'?190:kind.startsWith('dagger')?68:100,arc=kind==='spear'?.12:kind.startsWith('dagger')?.72:1.55;effects.push({kind:kind==='spear'?'thrust':'swing',x:a.x,y:a.y,a:a.face,range,arc,t:kind==='spear'?.20:.16,team:a.team});let hit=[];for(let b of actors){if(!b.alive||b.team===a.team)continue;let d=dist(a,b),da=Math.abs(norm(angle(a,b)-a.face));if(d<=range+b.r&&da<=arc/2)hit.push(b)}for(let b of hit){if(blocked(b,a)){a.stun=.42;effects.push({kind:'block',x:b.x,y:b.y,t:.25});continue}let clash=actors.find(o=>o!==a&&o.team!==a.team&&o.alive&&o.cd>.18&&dist(a,o)<76);if(clash){a.stun=.2;clash.stun=.2;continue}b.alive=false;effects.push({kind:'out',x:b.x,y:b.y,t:.55});if(!b.ai)transfer()}}
 function blocked(def,atk){if(!def.shield)return false;let dual=TYPES[def.type].r==='dualShield';if(dual)return true;return Math.abs(norm(angle(def,atk)-def.shieldA))<1.18}
 function collides(nx,ny,r){return obstacles.some(o=>nx+r>o.x&&nx-r<o.x+o.w&&ny+r>o.y&&ny-r<o.y+o.h)}
-function move(a,vx,vy,dt){let sp=TYPES[a.type].speed*(a.shield?(a.type==='doubleShield'?.42:.62):1);let nx=a.x+vx*sp*dt,ny=a.y+vy*sp*dt;nx=Math.max(court.x+30,Math.min(court.x+court.w-30,nx));ny=Math.max(court.y+30,Math.min(court.y+court.h-30,ny));if(!collides(nx,ny,a.r)){a.x=nx;a.y=ny}}
+function move(a,vx,vy,dt){
+  // 壁に斜めから当たっても完全停止せず、壁沿いに滑る。
+  // 長い分岐壁でAIが全員スタックして『フリーズ』したように見えるのを防ぐ。
+  let sp=TYPES[a.type].speed*(a.shield?(a.type==='doubleShield'?.42:.62):1);
+  let dx=vx*sp*dt,dy=vy*sp*dt;
+  let nx=Math.max(court.x+30,Math.min(court.x+court.w-30,a.x+dx));
+  if(!collides(nx,a.y,a.r))a.x=nx;
+  let ny=Math.max(court.y+30,Math.min(court.y+court.h-30,a.y+dy));
+  if(!collides(a.x,ny,a.r))a.y=ny;
+}
 function moveField(vx,vy,dt){let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}fieldPlayer.x=Math.max(80,Math.min(1200,fieldPlayer.x+vx*fieldPlayer.speed*dt));fieldPlayer.y=Math.max(110,Math.min(650,fieldPlayer.y+vy*fieldPlayer.speed*dt))}
-function ai(a,dt){let es=actors.filter(b=>b.alive&&b.team!==a.team),e=es.sort((p,q)=>dist(a,p)-dist(a,q))[0];if(!e)return;let enemyBase=a.team?{x:185,y:360}:{x:1095,y:360},target=e;let alliesNear=actors.filter(b=>b.alive&&b.team===a.team&&dist(a,b)<180).length;if(dist(a,e)>240||alliesNear>1)target=enemyBase;let ang=angle(a,target),d=dist(a,e);a.face=angle(a,e);let t=TYPES[a.type];if((t.l==='shield'||t.l==='dualShield')&&d<130&&Math.random()<.06){a.shield=true;a.shieldA=angle(a,e)}else if(d>100)a.shield=false;if(d<(a.type==='spear'?150:a.type==='dagger'?78:108)&&a.cd<=0&&!a.shield)hand(a,'r',true);else move(a,Math.cos(ang),Math.sin(ang),dt)}
+function ai(a,dt){
+  let es=actors.filter(b=>b.alive&&b.team!==a.team),e=es.sort((p,q)=>dist(a,p)-dist(a,q))[0];if(!e)return;
+  let enemyBase=a.team?{x:185,y:360}:{x:1095,y:360},target=e;
+  let alliesNear=actors.filter(b=>b.alive&&b.team===a.team&&dist(a,b)<180).length;
+  if(dist(a,e)>240||alliesNear>1)target=enemyBase;
+  let ang=angle(a,target),d=dist(a,e);a.face=angle(a,e);let t=TYPES[a.type];
+  if((t.l==='shield'||t.l==='dualShield')&&d<130&&Math.random()<.06){a.shield=true;a.shieldA=angle(a,e)}else if(d>100)a.shield=false;
+  if(d<(a.type==='spear'?150:a.type==='dagger'?78:108)&&a.cd<=0&&!a.shield){hand(a,'r',true);return;}
+  // 正面が壁なら、近い壁端へ少し進路を曲げる。長い壁でもAIが抜け道へ向かう。
+  let probe=26,px=a.x+Math.cos(ang)*probe,py=a.y+Math.sin(ang)*probe;
+  if(collides(px,py,a.r)){
+    let hit=obstacles.find(o=>px+a.r>o.x&&px-a.r<o.x+o.w&&py+a.r>o.y&&py-a.r<o.y+o.h);
+    if(hit){
+      let left={x:hit.x-a.r-12,y:a.y},right={x:hit.x+hit.w+a.r+12,y:a.y};
+      let wp=dist(a,left)<dist(a,right)?left:right;ang=angle(a,wp);
+    }
+  }
+  move(a,Math.cos(ang),Math.sin(ang),dt);
+}
 function inputVector(){let vx=joy.dx+(keys.ArrowRight||keys.d?1:0)-(keys.ArrowLeft||keys.a?1:0),vy=joy.dy+(keys.ArrowDown||keys.s?1:0)-(keys.ArrowUp||keys.w?1:0);let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}return [vx,vy]}
 function update(dt){let [vx,vy]=inputVector();if(mode==='field'){moveField(vx,vy,dt);let near=Math.hypot(fieldPlayer.x-arenaGate.x,fieldPlayer.y-arenaGate.y)<arenaGate.r;ui.status.textContent=near?'競技場の近くです。B「入る」で編成へ':'スティックで競技場まで歩こう';return}if(mode!=='match'||roundOver)return;for(let a of actors){if(!a.alive)continue;a.cd=Math.max(0,a.cd-dt);a.stun=Math.max(0,a.stun-dt);if(a.ai&&a.stun<=0)ai(a,dt)}let p=controlled();if(p&&p.stun<=0)move(p,vx,vy,dt);let ba=actors.filter(a=>a.team===0&&a.alive),ra=actors.filter(a=>a.team===1&&a.alive);if(!ra.length)winRound(0,'敵チーム全員OUT');else if(!ba.length)winRound(1,'味方チーム全員OUT');else{if(ba.some(a=>Math.hypot(a.x-1095,a.y-360)<45))winRound(0,'敵拠点を奪取');if(ra.some(a=>Math.hypot(a.x-185,a.y-360)<45))winRound(1,'自陣拠点を奪取された')}effects.forEach(e=>e.t-=dt);effects=effects.filter(e=>e.t>0)}
 function winRound(team,why){if(roundOver)return;roundOver=1;team===0?blue++:red++;ui.score.textContent=`${blue} - ${red}`;ui.status.textContent=(team===0?'BLUE ':'RED ')+why;if(blue>=2||red>=2)setTimeout(()=>{ui.rt.textContent=blue>red?'勝利！':'敗北';ui.rr.textContent=`${blue} - ${red}　${why}`;ui.result.classList.remove('hidden')},700);else setTimeout(resetRound,850)}
