@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.34';
+const VERSION='v0.35';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -844,9 +844,9 @@ function drawEffect(e){
  if(e.kind==='spinSkill'){
    let a=e.owner;if(a&&a.alive){
      let p=1-e.t/e.max,col=weaponColor(e.weapon||'sword'),rr=e.range||126,ang=p*Math.PI*2*1.35+a.face;
-     // 回転斬りは外周リングではなく、柄側から剣先までの円盤状残像。
-     // 内側ほど密度と不透明度を上げ、実際に一本の武器を高速回転させている見え方にする。
-     let inner=e.weapon==='greatsword'?30:26,steps=e.weapon==='greatsword'?12:10;
+     // 回転斬りの残像はキャラクター本体の外側から開始する。
+     // 身体には光を被せず、内周側ほど密度と不透明度を上げて高速回転を表現する。
+     let inner=e.weapon==='greatsword'?54:48,steps=e.weapon==='greatsword'?12:10;
      x.shadowColor=col;x.shadowBlur=e.weapon==='greatsword'?24:18;
      for(let i=0;i<steps;i++){
        let t=i/(steps-1),r=inner+(rr-inner)*t;
