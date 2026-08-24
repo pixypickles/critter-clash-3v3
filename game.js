@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.35';
+const VERSION='v0.36';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -776,7 +776,13 @@ function drawWeapon(k,side,active,anim=0){
  if(k==='none'||k==='katanaParry'||k==='rapierParry'||k==='greatswordGuard')return;
  x.save();x.lineCap='round';
  if(k==='shield'||k==='dualShield'){
-   let cy=side*23;x.translate(22,cy);x.shadowBlur=active?18:7;x.shadowColor=active?'#63f6ff':'#9fdbea';
+   // 盾の中心はターゲット方向へ回り込ませず、常にキャラクターの手元に固定する。
+   // 呼び出し側で武器座標全体が face 方向へ回転しているので、ここだけ逆回転して身体座標へ戻す。
+   let owner=drawWeapon.owner,fa=owner?.face||0;
+   x.rotate(-fa);
+   // side=+1 は右手、-1 は左手。剣＋盾は左手、双盾は左右の手元に一枚ずつ。
+   let hx=side*22,hy=10;x.translate(hx,hy);
+   x.shadowBlur=active?18:7;x.shadowColor=active?'#63f6ff':'#9fdbea';
    x.fillStyle=active?'#7debf2':'#b8dce5';x.strokeStyle='#f7ffff';x.lineWidth=3.5;
    x.beginPath();x.arc(0,0,21,0,Math.PI*2);x.fill();x.stroke();
    x.shadowBlur=0;x.strokeStyle='#527f8d';x.lineWidth=4;x.beginPath();x.arc(0,0,13,0,Math.PI*2);x.stroke();x.fillStyle='#efffff';x.beginPath();x.arc(0,0,5,0,Math.PI*2);x.fill();
@@ -844,28 +850,28 @@ function drawEffect(e){
  if(e.kind==='spinSkill'){
    let a=e.owner;if(a&&a.alive){
      let p=1-e.t/e.max,col=weaponColor(e.weapon||'sword'),rr=e.range||126,ang=p*Math.PI*2*1.35+a.face;
-     // 回転斬りの残像はキャラクター本体の外側から開始する。
-     // 身体には光を被せず、内周側ほど密度と不透明度を上げて高速回転を表現する。
-     let inner=e.weapon==='greatsword'?54:48,steps=e.weapon==='greatsword'?12:10;
-     x.shadowColor=col;x.shadowBlur=e.weapon==='greatsword'?24:18;
-     for(let i=0;i<steps;i++){
-       let t=i/(steps-1),r=inner+(rr-inner)*t;
-       x.globalAlpha=.42-(t*.25);x.strokeStyle=col;x.lineWidth=(e.weapon==='greatsword'?20:14)*(1-t*.48)+3;
-       x.beginPath();x.arc(a.x,a.y,r,0,Math.PI*2);x.stroke();
+     // 回転斬り：内側を塗りつぶさず、外周の濃い軌跡＋疎な剣残像で「一本を一回転」している見え方にする。
+     let inner=e.weapon==='greatsword'?58:52;
+     x.shadowColor=col;x.shadowBlur=e.weapon==='greatsword'?26:20;
+     // 外周の円は強め。完全な一色リングではなく二重の軌跡にして速度感を残す。
+     x.globalAlpha=.64;x.strokeStyle=col;x.lineWidth=e.weapon==='greatsword'?18:12;
+     x.beginPath();x.arc(a.x,a.y,rr,0,Math.PI*2);x.stroke();
+     x.globalAlpha=.30;x.lineWidth=e.weapon==='greatsword'?8:6;
+     x.beginPath();x.arc(a.x,a.y,rr-(e.weapon==='greatsword'?14:10),0,Math.PI*2);x.stroke();
+     // 剣らしい放射状残像は8本だけ。隙間を広く取り、内側は空ける。
+     const blades=8;
+     for(let i=0;i<blades;i++){
+       let aa=ang-(Math.PI*2/blades)*i,fade=1-i/blades;
+       x.globalAlpha=.18+.28*fade;x.strokeStyle=col;x.lineWidth=e.weapon==='greatsword'?12:7;
+       x.beginPath();x.moveTo(a.x+Math.cos(aa)*inner,a.y+Math.sin(aa)*inner);x.lineTo(a.x+Math.cos(aa)*(rr-2),a.y+Math.sin(aa)*(rr-2));x.stroke();
+       x.globalAlpha=.10+.18*fade;x.strokeStyle='#fff';x.lineWidth=e.weapon==='greatsword'?3.2:2.2;
+       x.beginPath();x.moveTo(a.x+Math.cos(aa)*(inner+6),a.y+Math.sin(aa)*(inner+6));x.lineTo(a.x+Math.cos(aa)*(rr-7),a.y+Math.sin(aa)*(rr-7));x.stroke();
      }
-     // 数本の「剣そのもの」の残像を入れて回転方向を読めるようにする。
-     for(let i=0;i<6;i++){
-       let aa=ang-i*.34,fade=1-i/6;
-       x.globalAlpha=.16+.38*fade;x.strokeStyle=col;x.lineWidth=e.weapon==='greatsword'?13:8;
-       x.beginPath();x.moveTo(a.x+Math.cos(aa)*inner,a.y+Math.sin(aa)*inner);x.lineTo(a.x+Math.cos(aa)*rr,a.y+Math.sin(aa)*rr);x.stroke();
-       x.globalAlpha=.10+.26*fade;x.strokeStyle='#fff';x.lineWidth=e.weapon==='greatsword'?3.5:2.5;
-       x.beginPath();x.moveTo(a.x+Math.cos(aa)*(inner+4),a.y+Math.sin(aa)*(inner+4));x.lineTo(a.x+Math.cos(aa)*(rr-4),a.y+Math.sin(aa)*(rr-4));x.stroke();
-     }
-     // 現在位置の刃を最も明るく描く。
-     x.globalAlpha=.96;x.strokeStyle=col;x.shadowBlur=30;x.lineWidth=e.weapon==='greatsword'?18:11;
+     // 現在位置の刃だけは一本の実体として最も明るく表示する。
+     x.globalAlpha=.98;x.strokeStyle=col;x.shadowBlur=30;x.lineWidth=e.weapon==='greatsword'?18:11;
      x.beginPath();x.moveTo(a.x+Math.cos(ang)*inner,a.y+Math.sin(ang)*inner);x.lineTo(a.x+Math.cos(ang)*rr,a.y+Math.sin(ang)*rr);x.stroke();
-     x.globalAlpha=.78;x.strokeStyle='#fff';x.shadowBlur=8;x.lineWidth=e.weapon==='greatsword'?4:3;
-     x.beginPath();x.moveTo(a.x+Math.cos(ang)*(inner+5),a.y+Math.sin(ang)*(inner+5));x.lineTo(a.x+Math.cos(ang)*(rr-5),a.y+Math.sin(ang)*(rr-5));x.stroke();
+     x.globalAlpha=.82;x.strokeStyle='#fff';x.shadowBlur=8;x.lineWidth=e.weapon==='greatsword'?4:3;
+     x.beginPath();x.moveTo(a.x+Math.cos(ang)*(inner+6),a.y+Math.sin(ang)*(inner+6));x.lineTo(a.x+Math.cos(ang)*(rr-5),a.y+Math.sin(ang)*(rr-5));x.stroke();
    }
  }else if(e.kind==='dashGuard'){
    let a=e.owner;if(a&&a.alive){let col=weaponColor('daggerAttack');x.globalAlpha=.32;x.strokeStyle=col;x.shadowBlur=18;x.shadowColor=col;x.lineWidth=10;x.beginPath();x.arc(a.x,a.y,48,a.face-1.0,a.face+1.0);x.stroke();x.shadowBlur=0}
