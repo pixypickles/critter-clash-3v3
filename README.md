@@ -16,3 +16,8 @@
 - スキルボタン枠（未実装）
 
 PC確認用: WASD/矢印で移動、J=左手、K=右手。
+
+## v0.2 UI adjustment
+- Landscape action buttons are raised so they are not clipped by short smartphone screens / safe areas.
+- Team setup and result/text overlays can scroll vertically.
+- Team setup controls are compacted on short landscape screens; start/back buttons remain reachable while scrolling.
