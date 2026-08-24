@@ -1,9 +1,9 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#203c32"><title>けものブレイド・スポーツ Prototype</title><link rel="stylesheet" href="style.css"></head><body>
-<div id="rotate"><div class="rotateCard"><div class="frogRow" aria-hidden="true"><span>🐸</span><span>🐸</span><span>🐸</span></div><div class="rotateTitle">↔ 横持ち推奨</div><div class="rotateVersion">Prototype <b id="version">v0.13</b></div></div></div>
-<main><canvas id="game" width="1280" height="720"></canvas><div id="versionBadge">Prototype v0.13</div>
+<div id="rotate"><div class="rotateCard"><div class="frogRow" aria-hidden="true"><span>🐸</span><span>🐸</span><span>🐸</span></div><div class="rotateTitle">↔ 横持ち推奨</div><div class="rotateVersion">Prototype <b id="version">v0.16</b></div></div></div>
+<main><canvas id="game" width="1280" height="720"></canvas><div id="versionBadge">Prototype v0.16</div>
 <div id="hud"><b id="modeLabel">FIELD</b><span id="score">0 - 0</span><span id="status">フィールドを歩いて競技場へ</span></div>
 <div id="stick"><i></i></div>
-<div id="actions"><button id="leftHand">L<small>左手</small></button><button id="rightHand">R<small>右手</small></button><button id="skill">A<small>スキルA<br>準備中</small></button><button id="enter">B<small>入る / スキルB</small></button></div>
-<div id="setup" class="overlay hidden"><section><h1>チーム編成</h1><p>3人の装備を自由に選べます。同じ装備でもOK。</p><div id="slots"></div><div class="row"><button id="start">試合開始</button><button id="back">戻る</button></div><p class="note">一撃OUT / 敵を全員OUT または敵拠点に触れると1本。2本先取。<br>右手・左手の同時押しは不要です。</p></section></div>
+<div id="actions"><button id="leftHand">L<small>左手</small></button><button id="rightHand">R<small>右手</small></button><button id="skill">A<small>スキルA<br>準備中</small></button><button id="enter">B<small>入る</small></button></div>
+<div id="setup" class="overlay hidden"><section><h1>チーム編成</h1><p>3人の装備を自由に選べます。同じ装備でもOK。</p><div id="slots"></div><div class="row"><button id="start">試合開始</button><button id="back">戻る</button></div><p class="note">一撃OUT / 敵を全員OUT または敵拠点に触れると1本。2本先取。<br>右手・左手の同時押しは不要です。試合中は A=武器スキル、B=操作キャラ交代。</p></section></div>
 <div id="result" class="overlay hidden"><section><h1 id="resultTitle"></h1><p id="resultText"></p><div class="row"><button id="rematch">再戦</button><button id="fieldBack">フィールドへ</button></div></section></div>
 </main><script src="game.js"></script></body></html>
