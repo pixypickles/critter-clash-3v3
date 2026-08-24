@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.20';
+const VERSION='v0.21';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -8,7 +8,8 @@ const SKILLS={
   spinSlash:{name:'回転斬り',owner:'sword'},
   doubleThrust:{name:'二連突き',owner:'spear'},
   dashSlash:{name:'踏込斬り',owner:'dagger'},
-  shieldCharge:{name:'シールドチャージ',owner:'doubleShield'}
+  shieldCharge:{name:'シールドチャージ',owner:'doubleShield'},
+  guardedLunge:{name:'護衛突進',owner:'sword'}
 };
 const TYPES={
   sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180,defaultSkill:'spinSlash'},
@@ -18,14 +19,14 @@ const TYPES={
 };
 let formation=['sword','spear','dagger'],formationSkills=['spinSlash','doubleThrust','dashSlash'],formationTactics=['balanced','support','flank'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[],practiceHits=[0,0],enemyTeam=null;
 const SAVE_KEY='kbs_team_v020',PROGRESS_KEY='kbs_progress_v020';
-let tournament=null;
+let tournament=null,bossBattle=null;
 const RANKS=[
  {id:'rookie',name:'ルーキー大会',label:'RANK C'},
  {id:'regular',name:'レギュラー大会',label:'RANK B'},
  {id:'master',name:'マスター大会',label:'RANK A'}
 ];
-let progress={unlocked:0,titles:[]};
-function loadSavedTeam(){try{let d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');if(d){if(Array.isArray(d.formation)&&d.formation.length===3)formation=d.formation.map(v=>TYPES[v]?v:'sword');if(Array.isArray(d.tactics)&&d.tactics.length===3)formationTactics=d.tactics.map(v=>TACTICS[v]?v:'balanced');formationSkills=formation.map((v,i)=>d.skills?.[i]&&SKILLS[d.skills[i]]?d.skills[i]:TYPES[v].defaultSkill)}}catch(e){}try{let d=JSON.parse(localStorage.getItem(PROGRESS_KEY)||'null');if(d&&Number.isInteger(d.unlocked))progress={unlocked:Math.max(0,Math.min(RANKS.length-1,d.unlocked)),titles:Array.isArray(d.titles)?d.titles:[]}}catch(e){}}
+let progress={unlocked:0,titles:[],unlockedSkills:[],pendingBoss:null,defeatedBosses:[]};
+function loadSavedTeam(){try{let d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');if(d){if(Array.isArray(d.formation)&&d.formation.length===3)formation=d.formation.map(v=>TYPES[v]?v:'sword');if(Array.isArray(d.tactics)&&d.tactics.length===3)formationTactics=d.tactics.map(v=>TACTICS[v]?v:'balanced');formationSkills=formation.map((v,i)=>d.skills?.[i]&&SKILLS[d.skills[i]]?d.skills[i]:TYPES[v].defaultSkill)}}catch(e){}try{let d=JSON.parse(localStorage.getItem(PROGRESS_KEY)||'null');if(d&&Number.isInteger(d.unlocked))progress={unlocked:Math.max(0,Math.min(RANKS.length-1,d.unlocked)),titles:Array.isArray(d.titles)?d.titles:[],unlockedSkills:Array.isArray(d.unlockedSkills)?d.unlockedSkills:[],pendingBoss:Number.isInteger(d.pendingBoss)?d.pendingBoss:null,defeatedBosses:Array.isArray(d.defeatedBosses)?d.defeatedBosses:[]}}catch(e){}}
 function saveTeam(){try{localStorage.setItem(SAVE_KEY,JSON.stringify({formation:[...formation],tactics:[...formationTactics],skills:[...formationSkills]}));ui.status.textContent='ホーム編成をセーブしました'}catch(e){ui.status.textContent='編成を保存できませんでした'}}
 function saveProgress(){try{localStorage.setItem(PROGRESS_KEY,JSON.stringify(progress))}catch(e){}}
 
@@ -47,7 +48,7 @@ const obstacles=[
  {x:620,y:532,w:40,h:24,oval:true}
 ];
 const fieldPlayer={x:300,y:220,r:22,speed:235};
-const homeGate={x:250,y:175,r:92},arenaGate={x:690,y:300,r:82},trainingGate={x:1035,y:145,r:88};
+const homeGate={x:250,y:175,r:92},arenaGate={x:690,y:300,r:82},trainingGate={x:1035,y:145,r:88},trialGate={x:1010,y:535,r:86};
 const TACTICS={balanced:'バランス',support:'味方と行動',flank:'回り込み',defense:'守備',attack:'攻撃重視'};
 const ENEMY_TEAMS=[
  {name:'サンセット・フォックス',colors:['#d85d45','#f2a33a','#fff1c9'],formation:['dagger','sword','spear'],tactics:['flank','balanced','attack']},
@@ -55,14 +56,15 @@ const ENEMY_TEAMS=[
  {name:'モス・フロッグス',colors:['#3d8a66','#83b94c','#f0d465'],formation:['doubleShield','dagger','sword'],tactics:['defense','flank','support']}
 ];
 const BLUE_UNIFORM=['#3278c8','#63a7df','#d7efff'];
+function compatibleSkills(type){return Object.entries(SKILLS).filter(([id,sk])=>sk.owner===type&&(id===TYPES[type].defaultSkill||progress.unlockedSkills.includes(id)))}
 function buildSlots(container,home=false){
   container.innerHTML='';
-  for(let i=0;i<3;i++){let d=document.createElement('div');d.className='slot';d.innerHTML=`<b>選手 ${i+1}${i===0?'（自分）':''}</b><div class="slotControls"><select data-kind="weapon" data-i="${i}">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${formation[i]===k?'selected':''}>${v.name}</option>`).join('')}</select><select data-kind="tactic" data-i="${i}">${Object.entries(TACTICS).map(([k,v])=>`<option value="${k}" ${formationTactics[i]===k?'selected':''}>戦術：${v}</option>`).join('')}</select></div>`;container.append(d)}
+  for(let i=0;i<3;i++){let d=document.createElement('div');d.className='slot';let skills=compatibleSkills(formation[i]);if(!skills.some(([id])=>id===formationSkills[i]))formationSkills[i]=TYPES[formation[i]].defaultSkill;d.innerHTML=`<b>選手 ${i+1}${i===0?'（自分）':''}</b><div class="slotControls"><select data-kind="weapon" data-i="${i}">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${formation[i]===k?'selected':''}>${v.name}</option>`).join('')}</select><select data-kind="tactic" data-i="${i}">${Object.entries(TACTICS).map(([k,v])=>`<option value="${k}" ${formationTactics[i]===k?'selected':''}>戦術：${v}</option>`).join('')}</select><select data-kind="skill" data-i="${i}">${skills.map(([k,v])=>`<option value="${k}" ${formationSkills[i]===k?'selected':''}>スキル：${v.name}</option>`).join('')}</select></div>`;container.append(d)}
 }
 loadSavedTeam();buildSlots(ui.slots);buildSlots(ui.homeSlots,true);
-function slotChange(e){if(e.target.dataset.i==null)return;let i=+e.target.dataset.i;if(e.target.dataset.kind==='weapon'){formation[i]=e.target.value;formationSkills[i]=TYPES[formation[i]].defaultSkill}else if(e.target.dataset.kind==='tactic')formationTactics[i]=e.target.value;buildSlots(ui.slots);buildSlots(ui.homeSlots,true)}
+function slotChange(e){if(e.target.dataset.i==null)return;let i=+e.target.dataset.i;if(e.target.dataset.kind==='weapon'){formation[i]=e.target.value;formationSkills[i]=TYPES[formation[i]].defaultSkill}else if(e.target.dataset.kind==='tactic')formationTactics[i]=e.target.value;else if(e.target.dataset.kind==='skill'&&SKILLS[e.target.value])formationSkills[i]=e.target.value;buildSlots(ui.slots);buildSlots(ui.homeSlots,true)}
 ui.slots.onchange=slotChange;ui.homeSlots.onchange=slotChange;
-q('#start').onclick=()=>{ui.setup.classList.add('hidden');startMatch()};q('#back').onclick=()=>{ui.setup.classList.add('hidden');mode='field';syncModeButtons()};q('#homeClose').onclick=()=>{saveTeam();ui.home.classList.add('hidden');mode='field';syncModeButtons()};q('#rematch').onclick=()=>{if(tournament)nextTournamentStep();else{ui.result.classList.add('hidden');startMatch()}};q('#fieldBack').onclick=()=>{if(tournament){abortTournament();return}ui.result.classList.add('hidden');mode='field';ui.mode.textContent='FIELD';ui.status.textContent='スティックで競技場まで歩こう';syncModeButtons()};
+q('#start').onclick=()=>{ui.setup.classList.add('hidden');startMatch()};q('#back').onclick=()=>{ui.setup.classList.add('hidden');mode='field';syncModeButtons()};q('#homeClose').onclick=()=>{saveTeam();ui.home.classList.add('hidden');mode='field';syncModeButtons()};q('#rematch').onclick=()=>{if(tournament)nextTournamentStep();else if(bossBattle){let won=bossBattle.resultWon;if(won)leaveBoss();else{ui.result.classList.add('hidden');startBoss()}}else{ui.result.classList.add('hidden');startMatch()}};q('#fieldBack').onclick=()=>{if(tournament){abortTournament();return}if(bossBattle){leaveBoss();return}ui.result.classList.add('hidden');mode='field';ui.mode.textContent='FIELD';ui.status.textContent='スティックで競技場まで歩こう';syncModeButtons()};
 function unit(team,i,type,skillId=null){
   // 壁から十分離した固定スポーン。開始直後に壁へ埋まらないよう3レーン中央へ配置。
   const ys=[155,360,565], bx=team===0?155:1125;
@@ -89,7 +91,7 @@ function stepProfile(type){
   })[type]||{distance:58,duration:.14};
 }
 function triggerStep(a,vx,vy){
-  if((mode!=='match'&&mode!=='practice')||!a||!a.alive||a.stun>0||a.cd>0||a.stepCd>0)return false;
+  if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||!a||!a.alive||a.stun>0||a.cd>0||a.stepCd>0)return false;
   let m=Math.hypot(vx,vy);if(m<.35)return false;vx/=m;vy/=m;
   const p=stepProfile(a.type),speed=p.distance/p.duration;
   a.stepT=p.duration;a.stepCd=.24;a.stepVX=vx*speed;a.stepVY=vy*speed;
@@ -131,11 +133,11 @@ function knockApart(a,b,amountA=18,amountB=18){
   if(!a||!b)return;let ang=angle(b,a);safePush(a,Math.cos(ang)*amountA,Math.sin(ang)*amountA);safePush(b,-Math.cos(ang)*amountB,-Math.sin(ang)*amountB);
 }
 function cycleControlled(){
-  if(mode!=='match')return;let alive=actors.filter(a=>a.team===0&&a.alive);if(alive.length<2)return;
+  if(mode!=='match'&&mode!=='boss')return;let alive=actors.filter(a=>a.team===0&&a.alive);if(alive.length<2)return;
   let cur=controlled(),idx=Math.max(0,alive.indexOf(cur)),next=alive[(idx+1)%alive.length];actors.filter(a=>a.team===0).forEach(a=>a.ai=true);next.ai=false;syncButtons();ui.status.textContent=`操作交代：${TYPES[next.type].name}`;
 }
 function useSkill(a){
-  if((mode!=='match'&&mode!=='practice')||!a||!a.alive||a.stun>0||a.skillCd>0)return;
+  if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||!a||!a.alive||a.stun>0||a.skillCd>0)return;
   let e=nearestEnemy(a);if(e)a.face=angle(a,e);
   const skill=a.skillId||TYPES[a.type].defaultSkill;
   if(skill==='spinSlash'){
@@ -155,11 +157,14 @@ function useSkill(a){
     effects.push(sw);a.attackPose=sw;a.cd=Math.max(a.cd,.62);
   }else if(skill==='shieldCharge'){
     a.skillCd=5.8;a.shield=true;a.invuln=Math.max(a.invuln,.10);a.skillCharge=.44;a.skillChargeVX=Math.cos(a.face)*520;a.skillChargeVY=Math.sin(a.face)*520;a.cd=Math.max(a.cd,.62);effects.push({kind:'shieldCharge',owner:a,t:.44,max:.44});
+  }else if(skill==='guardedLunge'){
+    a.skillCd=5.2;a.shield=true;a.shieldA=a.face;a.invuln=Math.max(a.invuln,.12);safePush(a,Math.cos(a.face)*52,Math.sin(a.face)*52);
+    let th={kind:'thrust',weapon:'sword',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:145,arc:.22,t:.62,max:.62,windup:.16,active:.13,recovery:.33,delay:.08,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,knockback:24};effects.push(th);a.attackPose=th;a.cd=Math.max(a.cd,.72);setTimeout(()=>{if(a)a.shield=false},260);
   }
   syncButtons();
 }
 function hand(a,side,down=true){
-  if((mode!=='match'&&mode!=='practice')||!a||!a.alive||a.stun>0)return;
+  if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||!a||!a.alive||a.stun>0)return;
   let kind=TYPES[a.type][side];
   if(kind==='shield'||kind==='dualShield'){
     a.shield=down;
@@ -289,7 +294,7 @@ function resolveAttack(e){
   }
   for(let b of hit){
     if(blocked(b,a)){if(e.knockback)knockApart(a,b,e.knockback,12);continue}
-    if(mode==='practice')practiceHit(b,a);else{b.alive=false;effects.push({kind:'out',x:b.x,y:b.y,t:.55});if(!b.ai)transfer();}
+    combatHit(b,a);
   }
 }
 function blocked(def,atk){
@@ -304,13 +309,18 @@ function blocked(def,atk){
   return ok;
 }
 
+function combatHit(target,attacker){
+  if(mode==='practice'){practiceHit(target,attacker);return}
+  if(mode==='boss'&&target.boss){target.hp=Math.max(0,(target.hp||3)-1);target.invuln=.55;target.stun=Math.max(target.stun,.34);knockApart(attacker,target,12,22);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});ui.score.textContent=`BOSS HP ${target.hp}/3`;ui.status.textContent=`ボスにHIT！ 残り ${target.hp}`;if(target.hp<=0){target.alive=false;setTimeout(()=>finishBoss(true),450)}return}
+  target.alive=false;effects.push({kind:'out',x:target.x,y:target.y,t:.55});if(!target.ai)transfer();
+}
 function resolveSpin(e){
   let a=e.owner;if(!a||!a.alive)return;
   for(let b of actors){
     if(!b.alive||b.team===a.team||b.invuln>0)continue;
     if(dist(a,b)>128+b.r||segmentHitsWall(a.x,a.y,b.x,b.y,1))continue;
     if(blocked(b,a))continue;
-    if(mode==='practice')practiceHit(b,a);else{b.alive=false;effects.push({kind:'out',x:b.x,y:b.y,t:.55});if(!b.ai)transfer();}
+    combatHit(b,a);
   }
 }
 function collides(nx,ny,r){return obstacles.some(o=>nx+r>o.x&&nx-r<o.x+o.w&&ny+r>o.y&&ny-r<o.y+o.h)}
@@ -455,9 +465,9 @@ function update(dt){
   let [vx,vy]=inputVector();
   if(mode==='field'){
     moveField(vx,vy,dt);let fac=nearestFacility();
-    ui.status.textContent=fac?`${fac.name}の近くです。B「入る」`:'ホームで編成保存・競技場で大会・練習場で1対1';return;
+    ui.status.textContent=fac?`${fac.name}の近くです。B「入る」`:'ホームで編成・競技場で大会・練習場で1対1・修練の地で強敵戦';return;
   }
-  if((mode!=='match'&&mode!=='practice')||roundOver)return;
+  if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||roundOver)return;
   for(let a of actors){
     if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0)ai(a,dt)
   }
@@ -470,6 +480,7 @@ function update(dt){
       if(ra.some(a=>Math.hypot(a.x-130,a.y-360)<45))winRound(1,'自陣拠点を奪取された')
     }
   }
+  if(mode==='boss'&&!ba.length&&!roundOver){roundOver=1;setTimeout(()=>finishBoss(false),350)}
   effects.forEach(e=>{
     if((e.delay||0)>0){e.delay=Math.max(0,e.delay-dt);return}
     e.t-=dt;
@@ -526,15 +537,25 @@ function nextTournamentStep(){
   const rank=RANKS[tournament.rankIndex];
   q('#tournament').classList.remove('hidden');mode='menu';renderTournamentMenu();renderTournamentStandings();
   q('#tournamentTitle').textContent=champion?`${rank.name} 優勝！`:`${rank.name} 大会終了`;
-  q('#tournamentMessage').textContent=champion?`${wins}勝${3-wins}敗。優勝です！`:`${wins}勝${3-wins}敗。優勝には2勝以上が必要です。`;
+  q('#tournamentMessage').textContent=champion?`${wins}勝${3-wins}敗。優勝です！`:`${wins}勝${3-wins}敗。優勝には2勝以上が必要です。`;if(progress.pendingBoss===null&&!progress.defeatedBosses.includes(tournament.rankIndex)){progress.pendingBoss=tournament.rankIndex;saveProgress();q('#tournamentMessage').textContent+=' フィールドの「修練の地」に強敵が現れました。';}
   if(champion&&tournament.rankIndex< RANKS.length-1&&progress.unlocked<tournament.rankIndex+1){progress.unlocked=tournament.rankIndex+1;saveProgress();q('#tournamentMessage').textContent+=' 次のランクの大会が解放されました。'}
   tournament=null;
 }
 function abortTournament(){tournament=null;ui.result.classList.add('hidden');q('#tournament').classList.add('hidden');mode='field';ui.mode.textContent='FIELD';ui.status.textContent='大会を中断しました';syncModeButtons()}
 
+
+const BOSSES=[
+ {name:'盾剣道場・師範ガマ',type:'sword',skill:'guardedLunge',reward:'guardedLunge',rewardName:'護衛突進'},
+ {name:'森の荒武者',type:'spear',skill:'doubleThrust',reward:null,rewardName:'次期スキル（準備中）'},
+ {name:'流浪の双刃使い',type:'dagger',skill:'dashSlash',reward:null,rewardName:'次期スキル（準備中）'}
+];
+function startBoss(){if(progress.pendingBoss===null){ui.status.textContent='今は静かです。大会を1つ終えると強敵が現れます';return}let bi=Math.min(progress.pendingBoss,BOSSES.length-1),b=BOSSES[bi];bossBattle={index:bi,boss:b};enemyTeam={name:b.name,colors:['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i])));let e=unit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=3;e.r=46;actors.push(e);effects=[];blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent='BOSS HP 3/3';ui.status.textContent=`${b.name}：こちらは一撃OUT、強敵は3HITで撃破`;syncModeButtons()}
+function finishBoss(won){if(!bossBattle)return;roundOver=1;let b=bossBattle.boss;if(won){let idx=bossBattle.index;if(!progress.defeatedBosses.includes(idx))progress.defeatedBosses.push(idx);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);progress.pendingBoss=null;saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='強敵撃破！';ui.rr.textContent=b.reward?`新スキル「${b.rewardName}」を獲得！ ホームで剣＋盾に装備できます。`:`${b.name}を撃破しました。報酬スキル枠は次版で追加予定です。`}else{ui.rt.textContent='修練失敗';ui.rr.textContent='強敵はその場に残っています。編成を整えて再挑戦できます。'}q('#rematch').textContent=won?'フィールドへ':'再挑戦';q('#fieldBack').textContent='フィールドへ';ui.result.classList.remove('hidden');bossBattle.resultWon=won}
+function leaveBoss(){bossBattle=null;ui.result.classList.add('hidden');mode='field';actors=[];effects=[];ui.mode.textContent='FIELD';ui.score.textContent='0 - 0';ui.status.textContent='修練の地から戻りました';syncModeButtons()}
+
 function draw(){x.clearRect(0,0,W,H);if(mode==='field')drawField();else drawMatch()}
-function drawField(){x.fillStyle='#a7d28d';x.fillRect(0,0,W,H);x.fillStyle='#d9cc9e';x.lineWidth=95;x.lineCap='round';x.beginPath();x.moveTo(120,610);x.bezierCurveTo(280,500,480,420,650,360);x.bezierCurveTo(820,300,980,220,1150,120);x.strokeStyle='#d9cc9e';x.stroke();x.lineCap='butt';place(homeGate.x,homeGate.y,'ホーム','🏠');place(arenaGate.x,arenaGate.y,'競技場','🏟');place(trainingGate.x,trainingGate.y,'練習場','🌳');x.fillStyle='#24483b';x.font='bold 28px sans-serif';x.fillText('けもの競技村',55,65);x.font='18px sans-serif';x.fillText('ホームで編成、練習場で1対1',55,94);for(let g of [homeGate,arenaGate,trainingGate]){x.strokeStyle='#ffffffaa';x.lineWidth=3;x.setLineDash([8,8]);x.beginPath();x.arc(g.x,g.y,g.r,0,Math.PI*2);x.stroke()}x.setLineDash([]);drawCuteFieldAnimal(fieldPlayer.x,fieldPlayer.y);x.fillStyle='#24483b';x.font='bold 16px sans-serif';x.textAlign='center';x.fillText('あなた',fieldPlayer.x,fieldPlayer.y+44);x.textAlign='start'}
-function nearestFacility(){let fs=[{name:'ホーム',gate:homeGate,id:'home'},{name:'競技場',gate:arenaGate,id:'arena'},{name:'練習場',gate:trainingGate,id:'training'}].map(f=>({...f,d:Math.hypot(fieldPlayer.x-f.gate.x,fieldPlayer.y-f.gate.y)})).filter(f=>f.d<f.gate.r);return fs.sort((a,b)=>a.d-b.d)[0]||null}
+function drawField(){x.fillStyle='#a7d28d';x.fillRect(0,0,W,H);x.fillStyle='#d9cc9e';x.lineWidth=95;x.lineCap='round';x.beginPath();x.moveTo(120,610);x.bezierCurveTo(280,500,480,420,650,360);x.bezierCurveTo(820,300,980,220,1150,120);x.strokeStyle='#d9cc9e';x.stroke();x.lineCap='butt';place(homeGate.x,homeGate.y,'ホーム','🏠');place(arenaGate.x,arenaGate.y,'競技場','🏟');place(trainingGate.x,trainingGate.y,'練習場','🌳');place(trialGate.x,trialGate.y,progress.pendingBoss===null?'修練の地':'強敵出現！','⛩️');x.fillStyle='#24483b';x.font='bold 28px sans-serif';x.fillText('けもの競技村',55,65);x.font='18px sans-serif';x.fillText('ホームで編成、練習場で1対1',55,94);for(let g of [homeGate,arenaGate,trainingGate,trialGate]){x.strokeStyle='#ffffffaa';x.lineWidth=3;x.setLineDash([8,8]);x.beginPath();x.arc(g.x,g.y,g.r,0,Math.PI*2);x.stroke()}x.setLineDash([]);drawCuteFieldAnimal(fieldPlayer.x,fieldPlayer.y);x.fillStyle='#24483b';x.font='bold 16px sans-serif';x.textAlign='center';x.fillText('あなた',fieldPlayer.x,fieldPlayer.y+44);x.textAlign='start'}
+function nearestFacility(){let fs=[{name:'ホーム',gate:homeGate,id:'home'},{name:'競技場',gate:arenaGate,id:'arena'},{name:'練習場',gate:trainingGate,id:'training'},{name:progress.pendingBoss===null?'修練の地':'強敵の気配',gate:trialGate,id:'trial'}].map(f=>({...f,d:Math.hypot(fieldPlayer.x-f.gate.x,fieldPlayer.y-f.gate.y)})).filter(f=>f.d<f.gate.r);return fs.sort((a,b)=>a.d-b.d)[0]||null}
 function place(px,py,n,ico){x.font='70px sans-serif';x.fillText(ico,px,py);x.font='bold 20px sans-serif';x.fillStyle='#26493d';x.fillText(n,px-10,py+34)}
 function drawCuteFieldAnimal(px,py){x.save();x.translate(px,py);x.shadowBlur=8;x.shadowColor='#356b45';x.fillStyle='#62c95b';x.beginPath();x.arc(0,4,21,0,Math.PI*2);x.fill();
 // 前作風に目玉を頭の上へしっかり飛び出させる
@@ -646,7 +667,7 @@ addEventListener('keydown',e=>{
   keys[e.key]=true;if(e.key==='j')hand(controlled(),'l',true);if(e.key==='k')hand(controlled(),'r',true);if(e.key==='u')useSkill(controlled());if(e.key==='i')cycleControlled()
 });addEventListener('keyup',e=>{keys[e.key]=false;if(e.key==='j')hand(controlled(),'l',false)});
 function bind(btn,side){btn.addEventListener('pointerdown',e=>{e.preventDefault();btn.setPointerCapture(e.pointerId);hand(controlled(),side,true)});btn.addEventListener('pointerup',e=>{e.preventDefault();hand(controlled(),side,false)});btn.addEventListener('pointercancel',()=>hand(controlled(),side,false))}bind(ui.L,'l');bind(ui.R,'r');
-ui.E.onclick=()=>{if(mode==='field'){let f=nearestFacility();if(!f){ui.status.textContent='施設の近くまで歩いてください';return}if(f.id==='home'){buildSlots(ui.homeSlots,true);ui.home.classList.remove('hidden');ui.status.textContent='ホーム：装備と戦術を設定'}else if(f.id==='arena'){openTournament();ui.status.textContent='大会受付：参加するランクを選択'}else if(f.id==='training')startPractice()}else if(mode==='practice')endPractice();else cycleControlled()};ui.S.onclick=()=>{if(mode==='match'||mode==='practice')useSkill(controlled());else ui.status.textContent='ホームで編成、練習場でスキル確認ができます'};
+ui.E.onclick=()=>{if(mode==='field'){let f=nearestFacility();if(!f){ui.status.textContent='施設の近くまで歩いてください';return}if(f.id==='home'){buildSlots(ui.homeSlots,true);ui.home.classList.remove('hidden');ui.status.textContent='ホーム：装備と戦術を設定'}else if(f.id==='arena'){openTournament();ui.status.textContent='大会受付：参加するランクを選択'}else if(f.id==='training')startPractice();else if(f.id==='trial')startBoss()}else if(mode==='practice')endPractice();else cycleControlled()};ui.S.onclick=()=>{if(mode==='match'||mode==='practice'||mode==='boss')useSkill(controlled());else ui.status.textContent='ホームで編成、練習場でスキル確認ができます'};
 const stick=q('#stick'),knob=stick.querySelector('i');
 function joyMove(e){let r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=(e.clientX-cx)/(r.width*.35),dy=(e.clientY-cy)/(r.height*.35),m=Math.hypot(dx,dy);if(m>1){dx/=m;dy/=m}joy.dx=dx;joy.dy=dy;knob.style.transform=`translate(${dx*28}px,${dy*28}px)`}
 stick.onpointerdown=e=>{joy.id=e.pointerId;joy.downAt=performance.now();joy.tapDX=joy.tapDY=0;stick.setPointerCapture(e.pointerId);joyMove(e);joy.tapDX=joy.dx;joy.tapDY=joy.dy};
