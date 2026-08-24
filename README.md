@@ -29,7 +29,7 @@ PC確認用: WASD/矢印で移動、J=左手、K=右手。
 - Team setup controls are compacted on short landscape screens; start/back buttons remain reachable while scrolling.
 
 
-## v0.8
+## v0.9
 - 武器本体と残像の色を統一
 - 剣の発生を遅く調整
 - 武器同士の衝突で双方が弾かれる処理を追加
