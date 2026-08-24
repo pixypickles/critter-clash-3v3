@@ -1,18 +1,22 @@
 'use strict';
-const VERSION='v0.12';
+const VERSION='v0.13';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill')};
 function q(s){return document.querySelector(s)}
-const versionEl=q('#version');if(versionEl)versionEl.textContent=VERSION;
+const versionEl=q('#version');if(versionEl)versionEl.textContent=VERSION;const versionBadge=q('#versionBadge');if(versionBadge)versionBadge.textContent=`Prototype ${VERSION}`;
 const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180},spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165},dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:230},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130}};
 let formation=['sword','spear','dagger'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[];
-const court={x:145,y:86,w:990,h:548};
-// v0.12: 二股 → 中央で合流 → 二股。
-// 左右に同じ大きさの障害物を1つずつ置くだけの、広くて詰まりにくい左右対称コート。
-// 上下通路はキャラ2体が余裕をもってすれ違える幅を確保している。
+const court={x:90,y:82,w:1100,h:556};
+// v0.13: 二股 → 中央の一本道 → 二股。
+// 左右の島状障害物で一度上下へ分かれ、中央ゲートでは必ず一本へ合流する。
+// 中央ゲートは一人が通りやすい程度の細めの通路。抜けた先で再び上下へ分岐できる。
 const obstacles=[
- {x:350,y:245,w:190,h:230},
- {x:740,y:245,w:190,h:230}
+ // 左右の分岐用アイランド（左右対称）
+ {x:300,y:220,w:180,h:280},
+ {x:800,y:220,w:180,h:280},
+ // 中央の上下ブロック。外周まで塞いで中央の細道へ必ず集約する。
+ {x:600,y:82,w:80,h:213},
+ {x:600,y:425,w:80,h:213}
 ];
 const fieldPlayer={x:545,y:525,r:22,speed:235};
 const arenaGate={x:715,y:325,r:82};
@@ -21,7 +25,7 @@ ui.slots.onchange=e=>{if(e.target.dataset.i!=null)formation[+e.target.dataset.i]
 q('#start').onclick=()=>{ui.setup.classList.add('hidden');startMatch()};q('#back').onclick=()=>{ui.setup.classList.add('hidden');mode='field';syncModeButtons()};q('#rematch').onclick=()=>{ui.result.classList.add('hidden');startMatch()};q('#fieldBack').onclick=()=>{ui.result.classList.add('hidden');mode='field';ui.mode.textContent='FIELD';ui.status.textContent='スティックで競技場まで歩こう';syncModeButtons()};
 function unit(team,i,type){
   // 壁から十分離した固定スポーン。開始直後に壁へ埋まらないよう3レーン中央へ配置。
-  const ys=[165,360,555], bx=team===0?215:1065;
+  const ys=[155,360,565], bx=team===0?155:1125;
   return {team,i,type,x:bx,y:ys[i],r:27,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,ai:team===1||i>0,species:(i%3),handAnimL:0,handAnimR:0,attackPose:null}
 }
 function resetRound(){actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t)));['sword','spear','dagger'].forEach((t,i)=>actors.push(unit(1,i,t)));roundOver=0;effects=[];syncButtons()}
@@ -201,31 +205,34 @@ function move(a,vx,vy,dt){
 }
 function moveField(vx,vy,dt){let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}fieldPlayer.x=Math.max(80,Math.min(1200,fieldPlayer.x+vx*fieldPlayer.speed*dt));fieldPlayer.y=Math.max(110,Math.min(650,fieldPlayer.y+vy*fieldPlayer.speed*dt))}
 function routePoint(a){
-  // 3人を完全に同じ線へ集めず、上下へ分けてから中央でいったん合流させる。
-  // 青は左→右、赤は右→左。障害物の手前/奥で同じ処理を鏡写しにする。
+  // 二股 → 中央ゲートで一本化 → 二股。
+  // 3人は最初に上下へ散り、中央では必ず y=360 付近の細道を通る。
   const dir=a.team?-1:1;
-  const first=a.team?930:350, second=a.team?740:540;
-  const topY=185,bottomY=535;
-  // 3人目はラウンドごとに偏らないよう、チームと番号で上下を決める。
-  const lane=((a.i+(a.team?1:0))%2===0)?topY:bottomY;
+  const lane=((a.i+(a.team?1:0))%2===0)?155:565;
   const x=a.x;
-  if((dir>0&&x<first-25)||(dir<0&&x>first+25)){
-    return {x:first-dir*55,y:lane};
+  if(dir>0){
+    // 左チーム: 左アイランドを上下から回る
+    if(x<500)return {x:515,y:lane};
+    // 中央の一本通路へ合流
+    if(x<710)return {x:700,y:360+(a.i-1)*18};
+    // 右アイランドで再び上下へ分岐
+    if(x<1000)return {x:1005,y:lane};
+    return {x:1150,y:360+(a.i-1)*28};
+  }else{
+    // 右チームは完全な鏡写し
+    if(x>780)return {x:765,y:lane};
+    if(x>570)return {x:580,y:360+(a.i-1)*18};
+    if(x>280)return {x:275,y:lane};
+    return {x:130,y:360+(a.i-1)*28};
   }
-  // 2つの障害物の間は「合流」ゾーン。少し縦に散らして団子状態を防ぐ。
-  if((dir>0&&x<740-35)||(dir<0&&x>540+35)){
-    return {x:640,y:330+(a.i-1)*42};
-  }
-  // 敵側の障害物を上下どちらかから抜ける。
-  return {x:a.team?300:980,y:lane};
 }
 function ai(a,dt){
   const es=actors.filter(b=>b.alive&&b.team!==a.team);
   if(!es.length)return;
   const e=es.slice().sort((p,q)=>dist(a,p)-dist(a,q))[0];
   const d=dist(a,e), t=TYPES[a.type];
-  const enemyBase=a.team?{x:185,y:360}:{x:1095,y:360};
-  const ownBase=a.team?{x:1095,y:360}:{x:185,y:360};
+  const enemyBase=a.team?{x:130,y:360}:{x:1150,y:360};
+  const ownBase=a.team?{x:1150,y:360}:{x:130,y:360};
   a.aiClock=(a.aiClock||0)+dt;
 
   // 周囲の人数を見る。1対2以上なら無謀に突っ込まず、味方へ寄る/少し引く。
@@ -296,7 +303,7 @@ function ai(a,dt){
   move(a,Math.cos(ang),Math.sin(ang),dt);
 }
 function inputVector(){let vx=joy.dx+(keys.ArrowRight||keys.d?1:0)-(keys.ArrowLeft||keys.a?1:0),vy=joy.dy+(keys.ArrowDown||keys.s?1:0)-(keys.ArrowUp||keys.w?1:0);let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}return [vx,vy]}
-function update(dt){let [vx,vy]=inputVector();if(mode==='field'){moveField(vx,vy,dt);let near=Math.hypot(fieldPlayer.x-arenaGate.x,fieldPlayer.y-arenaGate.y)<arenaGate.r;ui.status.textContent=near?'競技場の近くです。B「入る」で編成へ':'スティックで競技場まで歩こう';return}if(mode!=='match'||roundOver)return;for(let a of actors){if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.stun=Math.max(0,a.stun-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.ai&&a.stun<=0)ai(a,dt)}let p=controlled();if(p&&p.stun<=0)move(p,vx,vy,dt);let ba=actors.filter(a=>a.team===0&&a.alive),ra=actors.filter(a=>a.team===1&&a.alive);if(!ra.length)winRound(0,'敵チーム全員OUT');else if(!ba.length)winRound(1,'味方チーム全員OUT');else{if(ba.some(a=>Math.hypot(a.x-1095,a.y-360)<45))winRound(0,'敵拠点を奪取');if(ra.some(a=>Math.hypot(a.x-185,a.y-360)<45))winRound(1,'自陣拠点を奪取された')}effects.forEach(e=>{if((e.delay||0)>0){e.delay=Math.max(0,e.delay-dt);return}e.t-=dt;if(e.kind==='swing'||e.kind==='thrust'){let ph=attackPhase(e);if(ph==='active'){attackLunge(e);if(!e.resolved){resolveAttack(e);if(!e.clashed)e.resolved=true}}if(ph==='recovery')applyAttackRecovery(e)}});effects=effects.filter(e=>(e.delay||0)>0||e.t>0)}
+function update(dt){let [vx,vy]=inputVector();if(mode==='field'){moveField(vx,vy,dt);let near=Math.hypot(fieldPlayer.x-arenaGate.x,fieldPlayer.y-arenaGate.y)<arenaGate.r;ui.status.textContent=near?'競技場の近くです。B「入る」で編成へ':'スティックで競技場まで歩こう';return}if(mode!=='match'||roundOver)return;for(let a of actors){if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.stun=Math.max(0,a.stun-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.ai&&a.stun<=0)ai(a,dt)}let p=controlled();if(p&&p.stun<=0)move(p,vx,vy,dt);let ba=actors.filter(a=>a.team===0&&a.alive),ra=actors.filter(a=>a.team===1&&a.alive);if(!ra.length)winRound(0,'敵チーム全員OUT');else if(!ba.length)winRound(1,'味方チーム全員OUT');else{if(ba.some(a=>Math.hypot(a.x-1150,a.y-360)<45))winRound(0,'敵拠点を奪取');if(ra.some(a=>Math.hypot(a.x-130,a.y-360)<45))winRound(1,'自陣拠点を奪取された')}effects.forEach(e=>{if((e.delay||0)>0){e.delay=Math.max(0,e.delay-dt);return}e.t-=dt;if(e.kind==='swing'||e.kind==='thrust'){let ph=attackPhase(e);if(ph==='active'){attackLunge(e);if(!e.resolved){resolveAttack(e);if(!e.clashed)e.resolved=true}}if(ph==='recovery')applyAttackRecovery(e)}});effects=effects.filter(e=>(e.delay||0)>0||e.t>0)}
 function winRound(team,why){if(roundOver)return;roundOver=1;team===0?blue++:red++;ui.score.textContent=`${blue} - ${red}`;ui.status.textContent=(team===0?'BLUE ':'RED ')+why;if(blue>=2||red>=2)setTimeout(()=>{ui.rt.textContent=blue>red?'勝利！':'敗北';ui.rr.textContent=`${blue} - ${red}　${why}`;ui.result.classList.remove('hidden')},700);else setTimeout(resetRound,850)}
 function draw(){x.clearRect(0,0,W,H);if(mode==='field')drawField();else drawMatch()}
 function drawField(){x.fillStyle='#a7d28d';x.fillRect(0,0,W,H);x.fillStyle='#d9cc9e';x.lineWidth=95;x.lineCap='round';x.beginPath();x.moveTo(130,610);x.bezierCurveTo(300,520,480,430,650,370);x.bezierCurveTo(820,310,970,220,1150,120);x.strokeStyle='#d9cc9e';x.stroke();x.lineCap='butt';place(250,175,'クラブハウス','🏠');place(690,300,'競技場','🏟');place(1035,145,'森の練習路','🌳');x.fillStyle='#24483b';x.font='bold 28px sans-serif';x.fillText('けもの競技村',55,65);x.font='18px sans-serif';x.fillText('スティックで自由に歩けます',55,94);x.strokeStyle='#ffffffaa';x.lineWidth=3;x.setLineDash([8,8]);x.beginPath();x.arc(arenaGate.x,arenaGate.y,arenaGate.r,0,Math.PI*2);x.stroke();x.setLineDash([]);drawCuteFieldAnimal(fieldPlayer.x,fieldPlayer.y);x.fillStyle='#24483b';x.font='bold 16px sans-serif';x.textAlign='center';x.fillText('あなた',fieldPlayer.x,fieldPlayer.y+44);x.textAlign='start'}
@@ -304,7 +311,7 @@ function place(px,py,n,ico){x.font='70px sans-serif';x.fillText(ico,px,py);x.fon
 function drawCuteFieldAnimal(px,py){x.save();x.translate(px,py);x.shadowBlur=8;x.shadowColor='#356b45';x.fillStyle='#62c95b';x.beginPath();x.arc(0,4,21,0,Math.PI*2);x.fill();
 // 前作風に目玉を頭の上へしっかり飛び出させる
 x.beginPath();x.arc(-13,-18,10,0,Math.PI*2);x.arc(13,-18,10,0,Math.PI*2);x.fill();x.fillStyle='#fffbe7';x.beginPath();x.arc(-13,-19,7,0,Math.PI*2);x.arc(13,-19,7,0,Math.PI*2);x.fill();x.fillStyle='#24392f';x.beginPath();x.arc(-12,-19,3,0,Math.PI*2);x.arc(12,-19,3,0,Math.PI*2);x.fill();x.strokeStyle='#234632';x.lineWidth=2.5;x.beginPath();x.arc(0,5,10,.2,2.9);x.stroke();x.fillStyle='#355a76';roundRect(-18,14,36,13,5);x.fill();x.fillStyle='#62c95b';x.beginPath();x.ellipse(-14,31,7,14,.35,0,Math.PI*2);x.ellipse(14,31,7,14,-.35,0,Math.PI*2);x.fill();x.shadowBlur=0;x.restore()}
-function drawMatch(){x.fillStyle='#688ca1';x.fillRect(0,0,W,H);x.fillStyle='#a9d0ef';x.fillRect(court.x,court.y,court.w,court.h);x.strokeStyle='#fff7d8';x.lineWidth=5;x.strokeRect(court.x,court.y,court.w,court.h);x.setLineDash([10,11]);x.beginPath();x.moveTo(640,court.y);x.lineTo(640,court.y+court.h);x.stroke();x.setLineDash([]);for(let o of obstacles){x.fillStyle='#eef0e7';roundRect(o.x,o.y,o.w,o.h,13);x.fill();x.fillStyle='#d6ddd6';roundRect(o.x+8,o.y+8,o.w-16,o.h-16,10);x.fill()}base(185,360,'#4d83dc');base(1095,360,'#e26368');for(let a of actors)drawActor(a);for(let e of effects)drawEffect(e)}
+function drawMatch(){x.fillStyle='#688ca1';x.fillRect(0,0,W,H);x.fillStyle='#a9d0ef';x.fillRect(court.x,court.y,court.w,court.h);x.strokeStyle='#fff7d8';x.lineWidth=5;x.strokeRect(court.x,court.y,court.w,court.h);x.setLineDash([10,11]);x.beginPath();x.moveTo(640,court.y);x.lineTo(640,court.y+court.h);x.stroke();x.setLineDash([]);for(let o of obstacles){x.fillStyle='#eef0e7';roundRect(o.x,o.y,o.w,o.h,13);x.fill();x.fillStyle='#d6ddd6';roundRect(o.x+8,o.y+8,o.w-16,o.h-16,10);x.fill()}base(130,360,'#4d83dc');base(1150,360,'#e26368');for(let a of actors)drawActor(a);for(let e of effects)drawEffect(e)}
 function roundRect(px,py,w,h,r){x.beginPath();x.roundRect(px,py,w,h,r)}
 function base(px,py,col){x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.arc(px,py,35,0,Math.PI*2);x.stroke();x.globalAlpha=.22;x.fillStyle=col;x.fill();x.globalAlpha=1}
 function drawActor(a){if(!a.alive)return;x.save();x.translate(a.x,a.y);let teamCol=a.team?'#e56f74':'#5a90df',fur=a.species===0?'#65bf58':a.species===1?'#eee8dc':'#df9a55';
