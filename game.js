@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.11';
+const VERSION='v0.12';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill')};
 function q(s){return document.querySelector(s)}
@@ -7,17 +7,12 @@ const versionEl=q('#version');if(versionEl)versionEl.textContent=VERSION;
 const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180},spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165},dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:230},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130}};
 let formation=['sword','spear','dagger'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[];
 const court={x:145,y:86,w:990,h:548};
-// 横長の壁で「進行ルート」を上下に分ける。遮蔽物ではなくコース分岐用。
+// v0.12: 二股 → 中央で合流 → 二股。
+// 左右に同じ大きさの障害物を1つずつ置くだけの、広くて詰まりにくい左右対称コート。
+// 上下通路はキャラ2体が余裕をもってすれ違える幅を確保している。
 const obstacles=[
- // 中央を主戦場にしつつ、上下外周に回り込み通路を残す左右対称レイアウト。
- // すべて薄壁。中央へ横からすぐ合流できず、壁端を回って侵入する。
- // 上側：左から中央へ伸び、右側で下へ折れる。対になる下側は180度対称。
- {x:300,y:205,w:500,h:14}, {x:786,y:205,w:14,h:105},
- {x:480,y:300,w:320,h:14},
- {x:480,y:406,w:320,h:14},
- {x:480,y:406,w:14,h:105}, {x:480,y:497,w:500,h:14},
- // 外周寄りの短壁。迂回路にも軽い読み合いを作る。
- {x:260,y:150,w:180,h:12}, {x:840,y:558,w:180,h:12}
+ {x:350,y:245,w:190,h:230},
+ {x:740,y:245,w:190,h:230}
 ];
 const fieldPlayer={x:545,y:525,r:22,speed:235};
 const arenaGate={x:715,y:325,r:82};
@@ -205,48 +200,96 @@ function move(a,vx,vy,dt){
   if(!collides(a.x,ny,a.r))a.y=ny;
 }
 function moveField(vx,vy,dt){let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}fieldPlayer.x=Math.max(80,Math.min(1200,fieldPlayer.x+vx*fieldPlayer.speed*dt));fieldPlayer.y=Math.max(110,Math.min(650,fieldPlayer.y+vy*fieldPlayer.speed*dt))}
+function routePoint(a){
+  // 3人を完全に同じ線へ集めず、上下へ分けてから中央でいったん合流させる。
+  // 青は左→右、赤は右→左。障害物の手前/奥で同じ処理を鏡写しにする。
+  const dir=a.team?-1:1;
+  const first=a.team?930:350, second=a.team?740:540;
+  const topY=185,bottomY=535;
+  // 3人目はラウンドごとに偏らないよう、チームと番号で上下を決める。
+  const lane=((a.i+(a.team?1:0))%2===0)?topY:bottomY;
+  const x=a.x;
+  if((dir>0&&x<first-25)||(dir<0&&x>first+25)){
+    return {x:first-dir*55,y:lane};
+  }
+  // 2つの障害物の間は「合流」ゾーン。少し縦に散らして団子状態を防ぐ。
+  if((dir>0&&x<740-35)||(dir<0&&x>540+35)){
+    return {x:640,y:330+(a.i-1)*42};
+  }
+  // 敵側の障害物を上下どちらかから抜ける。
+  return {x:a.team?300:980,y:lane};
+}
 function ai(a,dt){
-  let es=actors.filter(b=>b.alive&&b.team!==a.team),e=es.sort((p,q)=>dist(a,p)-dist(a,q))[0];if(!e)return;
-  let enemyBase=a.team?{x:185,y:360}:{x:1095,y:360};
-  let d=dist(a,e), t=TYPES[a.type];
-  a.face=angle(a,e);
-
-  // 防御役も棒立ちにしない。敵との距離を保ちながら小さく巡回・横移動する。
+  const es=actors.filter(b=>b.alive&&b.team!==a.team);
+  if(!es.length)return;
+  const e=es.slice().sort((p,q)=>dist(a,p)-dist(a,q))[0];
+  const d=dist(a,e), t=TYPES[a.type];
+  const enemyBase=a.team?{x:185,y:360}:{x:1095,y:360};
+  const ownBase=a.team?{x:1095,y:360}:{x:185,y:360};
   a.aiClock=(a.aiClock||0)+dt;
-  let defending=false;
-  if((t.l==='shield'||t.l==='dualShield')&&d<145){
-    if(!a.shield&&Math.random()<.075){a.shield=true;a.shieldA=angle(a,e)}
-    defending=a.shield;
-  } else if(d>175) a.shield=false;
-  if(t.l==='spearGuard'&&d<135&&a.spearGuardCd<=0&&Math.random()<.05)hand(a,'l',true);
-  if(a.type==='dagger'&&d<112&&Math.random()<.06)a.daggerGuard=true;else if(a.type==='dagger'&&d>140)a.daggerGuard=false;
-  defending=defending||a.daggerGuard||a.spearGuard>0;
 
-  if(d<(a.type==='spear'?155:a.type==='dagger'?105:112)&&a.cd<=0&&!a.shield&&!a.daggerGuard&&a.spearGuard<=0){hand(a,'r',true);return;}
+  // 周囲の人数を見る。1対2以上なら無謀に突っ込まず、味方へ寄る/少し引く。
+  const nearEnemies=es.filter(b=>dist(a,b)<205).length;
+  const allies=actors.filter(b=>b.alive&&b.team===a.team&&b!==a);
+  const nearAllies=allies.filter(b=>dist(a,b)<205).length;
+  const outnumbered=nearEnemies>nearAllies+1;
 
-  // 基本目標。遠ければ拠点へ、近ければ敵へ。防御中も完全停止せず横へ揺さぶる。
-  let target=(d>255)?enemyBase:e;
-  let ang=angle(a,target);
-  if(defending&&d<190){
-    let side=(a.i%2?1:-1)*(a.team?1:-1);
-    ang=angle(a,e)+side*Math.PI/2 + Math.sin(a.aiClock*2.2)*.22;
+  // 防御系も棒立ちにはしないが、以前ほど頻繁に防御し続けない。
+  if((t.l==='shield'||t.l==='dualShield')&&d<150){
+    if(!a.shield&&Math.random()<.035){a.shield=true;a.shieldA=angle(a,e)}
+  }else if(d>175)a.shield=false;
+  if(t.l==='spearGuard'&&d<132&&a.spearGuardCd<=0&&Math.random()<.025)hand(a,'l',true);
+  if(a.type==='dagger'&&d<105&&Math.random()<.035)a.daggerGuard=true;
+  else if(a.type==='dagger'&&d>132)a.daggerGuard=false;
+  const defending=a.shield||a.daggerGuard||a.spearGuard>0;
+
+  // 攻撃可能距離なら攻撃。ただし人数不利では「当たる寸前」以外は無理に振らない。
+  const attackDist=a.type==='spear'?158:a.type==='dagger'?108:116;
+  if(d<attackDist&&a.cd<=0&&!a.shield&&!a.daggerGuard&&a.spearGuard<=0&&(!outnumbered||d<attackDist*.72)){
+    a.face=angle(a,e);hand(a,'r',true);return;
   }
 
-  // 薄壁にぶつかる前に、上下どちらかの端へ回り込む。
-  let probe=34,px=a.x+Math.cos(ang)*probe,py=a.y+Math.sin(ang)*probe;
+  let target=routePoint(a);
+  let ang=angle(a,target);
+
+  if(outnumbered){
+    // 最寄り味方がいればそこへ寄り、いなければ自陣側へ少し退く。
+    const mate=allies.slice().sort((p,q)=>dist(a,p)-dist(a,q))[0];
+    target=mate&&dist(a,mate)>90?mate:ownBase;
+    ang=angle(a,target);
+  }else if(d<210){
+    // 敵を見つけても直線突撃はしない。武器ごとの得意間合いを保ちながら横へ回る。
+    a.face=angle(a,e);
+    const desired=a.type==='spear'?172:a.type==='dagger'?112:138;
+    const side=((a.i+a.team)%2?1:-1);
+    if(d>desired+24) ang=angle(a,e)+side*.10;
+    else if(d<desired-20) ang=angle(a,e)+Math.PI+side*.16;
+    else ang=angle(a,e)+side*Math.PI/2;
+  }else if(Math.hypot(a.x-enemyBase.x,a.y-enemyBase.y)<245){
+    // 敵陣深くでは拠点へ進む。ただし3人が完全に一点へ重ならないよう少し上下に散らす。
+    target={x:enemyBase.x,y:enemyBase.y+(a.i-1)*34};
+    ang=angle(a,target);
+  }
+
+  // 防御中もじわっと横移動。止まり続けるだけにはしない。
+  if(defending&&d<190){
+    const side=((a.i+a.team)%2?1:-1);
+    ang=angle(a,e)+side*Math.PI/2 + Math.sin(a.aiClock*1.7)*.12;
+  }
+
+  // 進行先に障害物がある時は、最寄りの上下端へ迂回する。
+  const probe=42,px=a.x+Math.cos(ang)*probe,py=a.y+Math.sin(ang)*probe;
   if(collides(px,py,a.r)){
-    let hit=obstacles.find(o=>px+a.r>o.x&&px-a.r<o.x+o.w&&py+a.r>o.y&&py-a.r<o.y+o.h);
+    const hit=obstacles.find(o=>px+a.r>o.x&&px-a.r<o.x+o.w&&py+a.r>o.y&&py-a.r<o.y+o.h);
     if(hit){
-      let pts;
-      if(hit.w>=hit.h){
-        pts=[{x:hit.x-a.r-18,y:hit.y-a.r-18},{x:hit.x+hit.w+a.r+18,y:hit.y-a.r-18},
-             {x:hit.x-a.r-18,y:hit.y+hit.h+a.r+18},{x:hit.x+hit.w+a.r+18,y:hit.y+hit.h+a.r+18}];
-      }else{
-        pts=[{x:hit.x-a.r-18,y:hit.y-a.r-18},{x:hit.x+hit.w+a.r+18,y:hit.y-a.r-18},
-             {x:hit.x-a.r-18,y:hit.y+hit.h+a.r+18},{x:hit.x+hit.w+a.r+18,y:hit.y+hit.h+a.r+18}];
-      }
-      pts=pts.filter(p=>p.x>court.x+35&&p.x<court.x+court.w-35&&p.y>court.y+35&&p.y<court.y+court.h-35);
-      pts.sort((p,q)=>(dist(a,p)+dist(p,target))-(dist(a,q)+dist(q,target)));
+      const margin=a.r+20;
+      const pts=[
+        {x:hit.x-margin,y:hit.y-margin},
+        {x:hit.x+hit.w+margin,y:hit.y-margin},
+        {x:hit.x-margin,y:hit.y+hit.h+margin},
+        {x:hit.x+hit.w+margin,y:hit.y+hit.h+margin}
+      ].filter(p=>p.x>court.x+35&&p.x<court.x+court.w-35&&p.y>court.y+35&&p.y<court.y+court.h-35);
+      pts.sort((p,q)=>(dist(a,p)+Math.hypot(p.x-target.x,p.y-target.y))-(dist(a,q)+Math.hypot(q.x-target.x,q.y-target.y)));
       if(pts[0])ang=angle(a,pts[0]);
     }
   }
