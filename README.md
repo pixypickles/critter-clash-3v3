@@ -27,3 +27,12 @@ PC確認用: WASD/矢印で移動、J=左手、K=右手。
 - Landscape action buttons are raised so they are not clipped by short smartphone screens / safe areas.
 - Team setup and result/text overlays can scroll vertically.
 - Team setup controls are compacted on short landscape screens; start/back buttons remain reachable while scrolling.
+
+
+## v0.8
+- 武器本体と残像の色を統一
+- 剣の発生を遅く調整
+- 武器同士の衝突で双方が弾かれる処理を追加
+- 短剣攻撃中にもパリィ判定
+- 槍を両手持ち一本に変更。右手=突き、左手=時間制限付き回転防御
+- 槍の攻撃表示を一本化し、攻撃時の二重表示を解消
