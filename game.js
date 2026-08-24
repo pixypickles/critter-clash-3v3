@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.33';
+const VERSION='v0.34';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -842,7 +842,31 @@ function drawWeapon(k,side,active,anim=0){
 function drawEffect(e){
  x.save();
  if(e.kind==='spinSkill'){
-   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,col=weaponColor(e.weapon||'sword'),rr=e.range||126,ang=p*Math.PI*2*1.35+a.face;x.globalAlpha=.72;x.strokeStyle=col;x.shadowBlur=26;x.shadowColor=col;x.lineWidth=e.weapon==='greatsword'?18:13;x.beginPath();x.arc(a.x,a.y,rr,0,Math.PI*2);x.stroke();x.globalAlpha=.30;x.lineWidth=e.weapon==='greatsword'?38:30;x.beginPath();x.arc(a.x,a.y,rr-18+p*12,0,Math.PI*2);x.stroke();x.globalAlpha=.96;x.lineWidth=e.weapon==='greatsword'?18:10;x.beginPath();x.arc(a.x,a.y,rr,ang-.34,ang+.34);x.stroke();x.globalAlpha=.65;x.lineWidth=4;x.strokeStyle='#fff';x.beginPath();x.arc(a.x,a.y,rr,ang-.26,ang+.30);x.stroke()}
+   let a=e.owner;if(a&&a.alive){
+     let p=1-e.t/e.max,col=weaponColor(e.weapon||'sword'),rr=e.range||126,ang=p*Math.PI*2*1.35+a.face;
+     // 回転斬りは外周リングではなく、柄側から剣先までの円盤状残像。
+     // 内側ほど密度と不透明度を上げ、実際に一本の武器を高速回転させている見え方にする。
+     let inner=e.weapon==='greatsword'?30:26,steps=e.weapon==='greatsword'?12:10;
+     x.shadowColor=col;x.shadowBlur=e.weapon==='greatsword'?24:18;
+     for(let i=0;i<steps;i++){
+       let t=i/(steps-1),r=inner+(rr-inner)*t;
+       x.globalAlpha=.42-(t*.25);x.strokeStyle=col;x.lineWidth=(e.weapon==='greatsword'?20:14)*(1-t*.48)+3;
+       x.beginPath();x.arc(a.x,a.y,r,0,Math.PI*2);x.stroke();
+     }
+     // 数本の「剣そのもの」の残像を入れて回転方向を読めるようにする。
+     for(let i=0;i<6;i++){
+       let aa=ang-i*.34,fade=1-i/6;
+       x.globalAlpha=.16+.38*fade;x.strokeStyle=col;x.lineWidth=e.weapon==='greatsword'?13:8;
+       x.beginPath();x.moveTo(a.x+Math.cos(aa)*inner,a.y+Math.sin(aa)*inner);x.lineTo(a.x+Math.cos(aa)*rr,a.y+Math.sin(aa)*rr);x.stroke();
+       x.globalAlpha=.10+.26*fade;x.strokeStyle='#fff';x.lineWidth=e.weapon==='greatsword'?3.5:2.5;
+       x.beginPath();x.moveTo(a.x+Math.cos(aa)*(inner+4),a.y+Math.sin(aa)*(inner+4));x.lineTo(a.x+Math.cos(aa)*(rr-4),a.y+Math.sin(aa)*(rr-4));x.stroke();
+     }
+     // 現在位置の刃を最も明るく描く。
+     x.globalAlpha=.96;x.strokeStyle=col;x.shadowBlur=30;x.lineWidth=e.weapon==='greatsword'?18:11;
+     x.beginPath();x.moveTo(a.x+Math.cos(ang)*inner,a.y+Math.sin(ang)*inner);x.lineTo(a.x+Math.cos(ang)*rr,a.y+Math.sin(ang)*rr);x.stroke();
+     x.globalAlpha=.78;x.strokeStyle='#fff';x.shadowBlur=8;x.lineWidth=e.weapon==='greatsword'?4:3;
+     x.beginPath();x.moveTo(a.x+Math.cos(ang)*(inner+5),a.y+Math.sin(ang)*(inner+5));x.lineTo(a.x+Math.cos(ang)*(rr-5),a.y+Math.sin(ang)*(rr-5));x.stroke();
+   }
  }else if(e.kind==='dashGuard'){
    let a=e.owner;if(a&&a.alive){let col=weaponColor('daggerAttack');x.globalAlpha=.32;x.strokeStyle=col;x.shadowBlur=18;x.shadowColor=col;x.lineWidth=10;x.beginPath();x.arc(a.x,a.y,48,a.face-1.0,a.face+1.0);x.stroke();x.shadowBlur=0}
  }else if(e.kind==='guardBurst'){
