@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.24';
+const VERSION='v0.25';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore')};
 function q(s){return document.querySelector(s)}
@@ -21,9 +21,9 @@ const TYPES={
   spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165,defaultSkill:'doubleThrust'},
   dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:240,defaultSkill:'dashSlash'},
   doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130,defaultSkill:'shieldCharge'},
-  katana:{name:'刀',r:'katana',l:'none',speed:188,defaultSkill:'katanaCounter'},
+  katana:{name:'刀',r:'katana',l:'katanaParry',speed:188,defaultSkill:'katanaCounter'},
   naginata:{name:'薙刀',r:'naginata',l:'spearGuard',speed:158,defaultSkill:'naginataDoubleSweep'},
-  rapier:{name:'レイピア',r:'rapier',l:'daggerGuard',speed:218,defaultSkill:'rapierCounter'}
+  rapier:{name:'レイピア',r:'rapier',l:'rapierParry',speed:218,defaultSkill:'rapierCounter'}
 };
 let formation=['sword','spear','dagger'],formationSkills=['spinSlash','doubleThrust','dashSlash'],formationTactics=['balanced','support','flank'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[],practiceHits=[0,0],enemyTeam=null;
 const SAVE_KEY='kbs_team_v020',PROGRESS_KEY='kbs_progress_v020';
@@ -78,7 +78,7 @@ q('#start').onclick=()=>{ui.setup.classList.add('hidden');startMatch()};q('#back
 function unit(team,i,type,skillId=null){
   // 壁から十分離した固定スポーン。開始直後に壁へ埋まらないよう3レーン中央へ配置。
   const ys=[155,360,565], bx=team===0?155:1125;
-  return {team,i,type,skillId:skillId||TYPES[type].defaultSkill,tactic:team?((enemyTeam?.tactics||[])[i]||'balanced'):(formationTactics[i]||'balanced'),x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,ai:team===1||i>0,species:team?(i%3):(i===0?'snowFox':i===1?'frog':'rabbit'),counterT:0,handAnimL:0,handAnimR:0,attackPose:null,skillCd:0,invuln:0,stepT:0,stepVX:0,stepVY:0,stepCd:0,spearAdvanceT:0,spearAdvanceVX:0,spearAdvanceVY:0}
+  return {team,i,type,skillId:skillId||TYPES[type].defaultSkill,tactic:team?((enemyTeam?.tactics||[])[i]||'balanced'):(formationTactics[i]||'balanced'),x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,ai:team===1||i>0,species:team?(i%3):(i===0?'snowFox':i===1?'frog':'rabbit'),counterT:0,parryT:0,parryCd:0,parryKind:null,handAnimL:0,handAnimR:0,attackPose:null,skillCd:0,invuln:0,stepT:0,stepVX:0,stepVY:0,stepCd:0,spearAdvanceT:0,spearAdvanceVX:0,spearAdvanceVY:0}
 }
 function resetRound(){actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i])));(enemyTeam?.formation||['sword','spear','dagger']).forEach((t,i)=>actors.push(unit(1,i,t)));roundOver=0;effects=[];syncButtons()}
 function pickEnemyTeam(){enemyTeam=ENEMY_TEAMS[Math.floor(Math.random()*ENEMY_TEAMS.length)]}
@@ -87,7 +87,7 @@ function controlled(){return actors.find(a=>a.team===0&&a.alive&&!a.ai)||null}
 function transfer(){let n=actors.find(a=>a.team===0&&a.alive);if(n){actors.filter(a=>a.team===0).forEach(a=>a.ai=true);n.ai=false;syncButtons()}}
 function syncModeButtons(){if(mode==='field'){ui.S.innerHTML='A<small>情報</small>';ui.E.innerHTML='B<small>入る</small>'}else if(mode==='practice'){syncButtons();ui.E.innerHTML='B<small>練習終わる</small>'}else syncButtons()}
 function syncButtons(){let a=controlled();if(!a)return;let t=TYPES[a.type],sk=SKILLS[a.skillId]||SKILLS[t.defaultSkill];ui.R.innerHTML=`R<small>${label(t.r)}</small>`;ui.L.innerHTML=`L<small>${label(t.l)}</small>`;let cd=Math.max(0,a.skillCd||0);ui.S.innerHTML=`A<small>${cd>0?`${cd.toFixed(1)}秒`:(sk?.name||'スキル')}</small>`;ui.E.innerHTML='B<small>キャラ交代</small>'}
-function label(v){return ({sword:'剣',spear:'突き',spearGuard:'回転防御',shield:'盾',daggerAttack:'連続斬り',daggerGuard:'二刀防御',dualShield:'両盾',katana:'刀',naginata:'薙ぎ',rapier:'突き',none:'—'})[v]||v}
+function label(v){return ({sword:'剣',spear:'突き',spearGuard:'回転防御',shield:'盾',daggerAttack:'連続斬り',daggerGuard:'二刀防御',dualShield:'両盾',katana:'斬り',katanaParry:'受け流し',naginata:'薙ぎ',rapier:'斬り→突き',rapierParry:'パリィ',none:'—'})[v]||v}
 function nearestEnemy(a){let es=actors.filter(b=>b.alive&&b.team!==a.team);return es.sort((p,q)=>dist(a,p)-dist(a,q))[0]}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)} function angle(a,b){return Math.atan2(b.y-a.y,b.x-a.x)}
 function norm(v){while(v>Math.PI)v-=Math.PI*2;while(v<-Math.PI)v+=Math.PI*2;return v}
@@ -221,6 +221,18 @@ function hand(a,side,down=true){
     if(down){let e=nearestEnemy(a);if(e)a.face=angle(a,e)}
     return;
   }
+  // 刀とレイピアは長押し防御ではなく、押した直後だけ有効な受け流し／パリィ。
+  if(kind==='katanaParry'||kind==='rapierParry'){
+    if(down&&a.parryCd<=0){
+      let e=nearestEnemy(a);if(e)a.face=angle(a,e);
+      a.parryT=kind==='katanaParry'?.34:.26;
+      a.parryCd=kind==='katanaParry'?.72:.58;
+      a.parryKind=kind;
+      a.cd=Math.max(a.cd,kind==='katanaParry'?.12:.08);
+      effects.push({kind:'parryFlash',owner:a,t:a.parryT,max:a.parryT,weapon:a.type});
+    }
+    return;
+  }
   if(kind==='none')return;
   if(!down||a.cd>0)return;
   let e=nearestEnemy(a);if(e)a.face=angle(a,e);
@@ -231,9 +243,14 @@ function hand(a,side,down=true){
     return;
   }
   if(side==='l')a.handAnimL=.42;else a.handAnimR=.42;
+  if(kind==='rapier'){
+    rapierCombo(a);
+    a.cd=.76;
+    return;
+  }
   attack(a,kind,side);
   // 剣は見てから反応できるよう少し遅め、槍は溜めが長い。
-  a.cd=kind==='spear'?1.02:kind==='naginata'?1.00:kind==='katana'?.94:kind==='rapier'?.68:.92;
+  a.cd=kind==='spear'?1.02:kind==='naginata'?1.00:kind==='katana'?.94:.92;
 }
 
 function daggerCombo(a){
@@ -246,6 +263,13 @@ function daggerCombo(a){
   };
   let first=make('r',0,.20),second=make('l',.14,-.20);
   a.attackPose=first;
+}
+
+function rapierCombo(a){
+  // レイピア通常攻撃：近距離を横斬りで触ってから、すぐ細い突きへ繋ぐ二連撃。
+  const sw={kind:'swing',weapon:'rapier',side:'r',x:a.x,y:a.y,a:a.face,range:108,arc:.82,t:.34,max:.34,windup:.055,active:.12,recovery:.165,delay:0,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false};
+  const th={kind:'thrust',weapon:'rapier',side:'r',x:a.x,y:a.y,a:a.face,range:158,arc:.14,t:.37,max:.37,windup:.055,active:.13,recovery:.185,delay:.16,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:12,lungeApplied:false,retarget:true,retargeted:false};
+  effects.push(sw,th);a.attackPose=sw;
 }
 
 function attack(a,kind,side){
@@ -339,6 +363,14 @@ function resolveAttack(e){
 }
 function blocked(def,atk){
   let ok=false;
+  if(def.parryT>0){
+    def.parryT=0;def.invuln=Math.max(def.invuln,.10);
+    atk.stun=Math.max(atk.stun,def.type==='katana'?.30:.24);
+    knockApart(atk,def,def.type==='katana'?26:20,4);
+    effects.push({kind:'parry',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.30});
+    ui.status.textContent=def.type==='katana'?'受け流し！':'PARRY！';
+    return true;
+  }
   if(def.counterT>0){def.counterT=0;def.invuln=Math.max(def.invuln,.24);atk.stun=Math.max(atk.stun,.18);effects.push({kind:'block',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.30});
     if(def.type==='katana'){let sw={kind:'swing',weapon:'katana',skill:true,side:'r',x:def.x,y:def.y,a:angle(def,atk),range:142,arc:1.10,t:.38,max:.38,windup:.05,active:.14,recovery:.19,delay:.04,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false};effects.push(sw);def.attackPose=sw;}
     else if(def.type==='rapier'){let aa=angle(def,atk)+Math.PI/2*(Math.random()<.5?-1:1);safePush(def,Math.cos(aa)*58,Math.sin(aa)*58);def.face=angle(def,atk);let th={kind:'thrust',weapon:'rapier',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:185,arc:.16,t:.42,max:.42,windup:.04,active:.15,recovery:.23,delay:.03,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:64,lungeApplied:false};effects.push(th);def.attackPose=th;}return true;}
@@ -439,6 +471,14 @@ function ai(a,dt){
   const nearAllies=allies.filter(b=>dist(a,b)<205).length;
   const outnumbered=nearEnemies>nearAllies+1;const tactic=a.tactic||'balanced';
 
+  // 練習相手はカウンター練習用。間合いに入ると高頻度で攻撃し、離れたら素直に詰める。
+  if(mode==='practice'&&a.practiceAggro){
+    a.face=angle(a,e);
+    if(d<142&&a.cd<=0&&a.stun<=0){hand(a,'r',true);return;}
+    if(d>104){move(a,Math.cos(a.face),Math.sin(a.face),dt);return;}
+    let side=((Math.floor(a.aiClock*1.7)%2)?1:-1);move(a,Math.cos(a.face+side*Math.PI/2)*.45,Math.sin(a.face+side*Math.PI/2)*.45,dt);return;
+  }
+
   // 防御系も棒立ちにはしないが、以前ほど頻繁に防御し続けない。
   if((t.l==='shield'||t.l==='dualShield')&&d<150){
     if(!a.shield&&Math.random()<.035){a.shield=true;a.shieldA=angle(a,e)}
@@ -512,7 +552,7 @@ function update(dt){
   }
   if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||roundOver)return;
   for(let a of actors){
-    if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0)ai(a,dt)
+    if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0)ai(a,dt)
   }
   let p=controlled();if(p&&p.stun<=0&&p.stepT<=0)move(p,vx,vy,dt);
   separateActors();
@@ -527,6 +567,7 @@ function update(dt){
   effects.forEach(e=>{
     if((e.delay||0)>0){
       e.delay=Math.max(0,e.delay-dt);
+      if(e.delay<=0&&e.owner?.alive&&(e.kind==='swing'||e.kind==='thrust'))e.owner.attackPose=e;
       if(e.delay<=0&&e.retarget&&!e.retargeted&&e.owner?.alive){let t=nearestEnemy(e.owner);if(t){e.owner.face=angle(e.owner,t);e.a=e.owner.face}e.retargeted=true}
       return;
     }
@@ -544,7 +585,7 @@ function update(dt){
 }
 
 function startPractice(){
-  mode='practice';roundOver=0;practiceHits=[0,0];enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['balanced']};actors=[];let p=unit(0,0,formation[0],formationSkills[0]);p.x=470;p.y=360;p.ai=false;p.tactic='balanced';let e=unit(1,0,'sword','spinSlash');e.x=810;e.y=360;e.ai=true;e.tactic='defense';actors=[p,e];effects=[];ui.mode.textContent='PRACTICE';ui.score.textContent='0 - 0';ui.status.textContent='1対1練習：OUTなし・ヒット数だけ記録';syncModeButtons();updatePracticeHud();
+  mode='practice';roundOver=0;practiceHits=[0,0];enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['balanced']};actors=[];let p=unit(0,0,formation[0],formationSkills[0]);p.x=470;p.y=360;p.ai=false;p.tactic='balanced';let e=unit(1,0,'sword','spinSlash');e.x=810;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;actors=[p,e];effects=[];ui.mode.textContent='PRACTICE';ui.score.textContent='0 - 0';ui.status.textContent='1対1練習：OUTなし・ヒット数だけ記録';syncModeButtons();updatePracticeHud();
 }
 function updatePracticeHud(){if(ui.practiceScore)ui.practiceScore.textContent=`あなた ${practiceHits[0]} - ${practiceHits[1]} 相手`}
 function practiceHit(target,attacker){practiceHits[attacker.team]++;target.invuln=.45;target.stun=Math.max(target.stun,.28);knockApart(attacker,target,10,30);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});updatePracticeHud();ui.score.textContent=`${practiceHits[0]} - ${practiceHits[1]}`}
@@ -652,6 +693,7 @@ x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;if(!(a.type==='
 if(a===controlled()){x.strokeStyle='#fff';x.lineWidth=3;x.beginPath();x.arc(0,2,34,0,Math.PI*2);x.stroke()}x.restore();x.fillStyle='#17382f';x.font='11px sans-serif';x.textAlign='center';x.fillText(TYPES[a.type].name,a.x,a.y+67);x.textAlign='start'}
 function weaponColor(k){return k==='katana'?'#ff4d59':k==='naginata'?'#56ef79':k==='rapier'?'#4ca8ff':k==='spear'?'#63f6ff':k&&k.startsWith('dagger')?'#ff75df':'#ffe66d'}
 function drawWeapon(k,side,active,anim=0){
+ if(k==='none'||k==='katanaParry'||k==='rapierParry')return;
  x.save();x.lineCap='round';
  if(k==='shield'||k==='dualShield'){
    let cy=side*23;x.translate(22,cy);x.shadowBlur=active?18:7;x.shadowColor=active?'#63f6ff':'#9fdbea';
@@ -670,12 +712,18 @@ function drawWeapon(k,side,active,anim=0){
    if(k.startsWith('dagger')&&anim>0){let p=Math.min(1,anim/.24);let swing=Math.sin((1-p)*Math.PI)*22;tipY-=side*swing;baseY+=side*4}
    // 攻撃中は「持っている一本そのもの」が動く。別武器は描かない。
    let pose=owner&&owner.attackPose&&owner.attackPose.weapon===k?owner.attackPose:null;
-   if(pose){let ph=attackPhase(pose),el=pose.max-pose.t;if(k==='spear'||k==='rapier'){
+   if(pose){let ph=attackPhase(pose),el=pose.max-pose.t;if(k==='spear'||(k==='rapier'&&pose.kind==='thrust')){
      let pr=ph==='windup'?Math.max(.65,1-el/pose.windup*.35):ph==='active'?1.65:Math.max(1,1.65-(el-pose.windup-pose.active)/pose.recovery*.65);
      len*=pr;
+   }else if(k==='naginata'&&pose.kind==='swing'){
+     let q=Math.max(0,Math.min(1,(el-pose.windup*.35)/(pose.windup+pose.active)));
+     x.rotate(-.75+q*1.5);
    }else if(k==='sword'){
      let pr=ph==='windup'?Math.min(1,el/pose.windup):1;tipY+=side*(1-pr)*22;
    }}
+   if(owner&&owner.parryT>0&&(k==='katana'||k==='rapier')){
+     x.rotate(k==='katana'?-0.72:-0.48);baseY*=.25;tipY*=.25;
+   }
    const drawBlade=(by,ty)=>{x.shadowBlur=18;x.shadowColor=col;x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo((k==='spear'||k==='naginata')?-18:7,by);x.lineTo((k==='spear'||k==='naginata')?18:17,by);x.stroke();x.strokeStyle=col;x.lineWidth=7;x.beginPath();x.moveTo((k==='spear'||k==='naginata')?16:16,by);x.lineTo(len,ty);x.stroke();x.shadowBlur=0;x.strokeStyle='#ffffff';x.lineWidth=2;x.beginPath();x.moveTo((k==='spear'||k==='naginata')?20:19,by);x.lineTo(len-2,ty);x.stroke();};
    drawBlade(baseY,tipY);
    if(k==='daggerAttack'&&guarding)drawBlade(-baseY,-tipY);
@@ -708,6 +756,10 @@ function drawEffect(e){
    }
  }else if(e.kind==='spearGuard'){
    let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,col=weaponColor('spear'),half=58,mid=36;x.translate(a.x+Math.cos(a.face)*mid,a.y+Math.sin(a.face)*mid);x.rotate(a.face+p*22);x.globalAlpha=.82;x.lineCap='round';x.shadowBlur=18;x.shadowColor=col;x.strokeStyle='#8a6d43';x.lineWidth=5;x.beginPath();x.moveTo(-half,0);x.lineTo(half,0);x.stroke();x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(-half+12,0);x.lineTo(half,0);x.stroke();x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.moveTo(-half+16,0);x.lineTo(half-3,0);x.stroke();}
+ }else if(e.kind==='parryFlash'){
+   let a=e.owner;if(a&&a.alive){let col=weaponColor(e.weapon);x.globalAlpha=.28;x.strokeStyle=col;x.shadowBlur=16;x.shadowColor=col;x.lineWidth=8;x.beginPath();x.arc(a.x,a.y,50,a.face-.9,a.face+.9);x.stroke();x.shadowBlur=0}
+ }else if(e.kind==='parry'){
+   x.globalAlpha=Math.min(1,e.t*5);x.strokeStyle='#eaffff';x.shadowBlur=18;x.shadowColor='#7eeaff';x.lineWidth=5;x.beginPath();x.arc(e.x,e.y,28+(1-e.t/.30)*26,0,Math.PI*2);x.stroke();x.shadowBlur=0;x.fillStyle='#fff';x.font='bold 24px sans-serif';x.fillText('PARRY!',e.x-42,e.y-38);
  }else if(e.kind==='practiceHit'){x.globalAlpha=Math.min(1,e.t*4);x.fillStyle='#fff7a6';x.font='bold 28px sans-serif';x.fillText('HIT!',e.x-30,e.y-48);
  }else if(e.kind==='stepDust'){
    let p=1-e.t/e.max;x.globalAlpha=.32*(1-p);x.strokeStyle='#ffffff';x.lineWidth=5;x.beginPath();x.arc(e.x,e.y,18+p*28,0,Math.PI*2);x.stroke();
