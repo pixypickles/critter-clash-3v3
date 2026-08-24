@@ -1,10 +1,10 @@
 'use strict';
-const VERSION='v0.16';
+const VERSION='v0.17';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill')};
 function q(s){return document.querySelector(s)}
 const versionEl=q('#version');if(versionEl)versionEl.textContent=VERSION;const versionBadge=q('#versionBadge');if(versionBadge)versionBadge.textContent=`Prototype ${VERSION}`;
-const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180,skill:'回転斬り'},spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165,skill:'二連突き'},dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:240,skill:'退避突き'},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130,skill:'準備中'} };
+const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180,skill:'回転斬り'},spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165,skill:'二連突き'},dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:240,skill:'踏込斬り'},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130,skill:'準備中'} };
 let formation=['sword','spear','dagger'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[];
 const court={x:35,y:82,w:1210,h:556};
 // v0.15: 左右を広げ、中央の主戦場を広めにした二股→合流→二股。
@@ -68,12 +68,14 @@ function useSkill(a){
     const mk=(delay,second)=>({kind:'thrust',weapon:'spear',skill:true,second,side:'r',x:a.x,y:a.y,a:a.face,range:second?220:190,arc:.13,t:.66,max:.66,windup:.18,active:.12,recovery:.36,delay,team:a.team,owner:a,resolved:false,parry:false,recoveryApplied:false,knockback:second?42:0});
     effects.push(mk(0,false),mk(.20,true));a.cd=Math.max(a.cd,1.05);a.attackPose=effects[effects.length-1];
   }else if(a.type==='dagger'){
-    a.skillCd=4.8;a.invuln=.24;
-    // まず短く退き、すぐに高速踏み込み突き。退避中のみ無敵。
-    safePush(a,-Math.cos(a.face)*52,-Math.sin(a.face)*52);
-    effects.push({kind:'backstep',owner:a,x:a.x,y:a.y,t:.24,max:.24});
-    let th={kind:'thrust',weapon:'daggerAttack',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:118,arc:.16,t:.48,max:.48,windup:.06,active:.11,recovery:.31,delay:.16,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:82,lungeApplied:false};
-    effects.push(th);a.attackPose=th;a.cd=Math.max(a.cd,.72);
+    a.skillCd=4.8;a.invuln=.20;
+    // 踏込斬り：片方の短剣を内側に構えながら最初から前へ踏み込む。
+    // 踏み込みのごく短い間だけ無敵になり、その直後にもう一本で高速斬り。
+    safePush(a,Math.cos(a.face)*58,Math.sin(a.face)*58);
+    a.daggerSkillGuard=.20;
+    effects.push({kind:'dashGuard',owner:a,x:a.x,y:a.y,t:.20,max:.20});
+    let sw={kind:'swing',weapon:'daggerAttack',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:112,arc:1.18,t:.46,max:.46,windup:.08,active:.12,recovery:.26,delay:.08,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:34,lungeApplied:false};
+    effects.push(sw);a.attackPose=sw;a.cd=Math.max(a.cd,.62);
   }else if(a.type==='doubleShield'){
     ui.status.textContent='双盾スキルは後で調整予定';return;
   }
@@ -380,7 +382,7 @@ function update(dt){
   }
   if(mode!=='match'||roundOver)return;
   for(let a of actors){
-    if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.ai&&a.stun<=0)ai(a,dt)
+    if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.ai&&a.stun<=0)ai(a,dt)
   }
   let p=controlled();if(p&&p.stun<=0)move(p,vx,vy,dt);
   separateActors();
@@ -467,8 +469,8 @@ function drawEffect(e){
  x.save();
  if(e.kind==='spinSkill'){
    let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max,col=weaponColor('sword');x.globalAlpha=.55;x.strokeStyle=col;x.shadowBlur=20;x.shadowColor=col;x.lineWidth=12;x.beginPath();x.arc(a.x,a.y,126,0,Math.PI*2);x.stroke();x.globalAlpha=.18;x.lineWidth=28;x.beginPath();x.arc(a.x,a.y,106+p*18,0,Math.PI*2);x.stroke()}
- }else if(e.kind==='backstep'){
-   let a=e.owner;if(a&&a.alive){x.globalAlpha=.28;x.fillStyle='#ffffff';x.beginPath();x.arc(a.x,a.y,50,0,Math.PI*2);x.fill()}
+ }else if(e.kind==='dashGuard'){
+   let a=e.owner;if(a&&a.alive){let col=weaponColor('daggerAttack');x.globalAlpha=.32;x.strokeStyle=col;x.shadowBlur=18;x.shadowColor=col;x.lineWidth=10;x.beginPath();x.arc(a.x,a.y,48,a.face-1.0,a.face+1.0);x.stroke();x.shadowBlur=0}
  }else if(e.kind==='guardBurst'){
    let a=e.owner;if(a&&a.alive){x.globalAlpha=.30;x.strokeStyle='#9ffaff';x.lineWidth=12;x.beginPath();x.arc(a.x,a.y,62,0,Math.PI*2);x.stroke()}
  }else if(e.kind==='swing'||e.kind==='thrust'){
