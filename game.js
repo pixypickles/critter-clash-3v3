@@ -1,21 +1,23 @@
 'use strict';
-const VERSION='v0.10';
+const VERSION='v0.11';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill')};
 function q(s){return document.querySelector(s)}
 const versionEl=q('#version');if(versionEl)versionEl.textContent=VERSION;
-const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180},spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165},dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:210},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130}};
+const TYPES={sword:{name:'剣＋盾',r:'sword',l:'shield',speed:180},spear:{name:'両手槍',r:'spear',l:'spearGuard',speed:165},dagger:{name:'短剣二刀流',r:'daggerAttack',l:'daggerGuard',speed:230},doubleShield:{name:'双盾',r:'dualShield',l:'dualShield',speed:130}};
 let formation=['sword','spear','dagger'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[];
 const court={x:145,y:86,w:990,h:548};
 // 横長の壁で「進行ルート」を上下に分ける。遮蔽物ではなくコース分岐用。
 const obstacles=[
- // 左右対称の薄い横壁。中央で簡単にレーン変更できず、端まで回る必要がある。
- // 上下の長壁で3本の進行コースを作る。
- {x:320,y:235,w:640,h:18},
- {x:320,y:465,w:640,h:18},
- // 中央レーンにも左右対称の短壁を置き、一直線の合流を少しだけ崩す。
- {x:245,y:345,w:250,h:18},
- {x:785,y:345,w:250,h:18}
+ // 中央を主戦場にしつつ、上下外周に回り込み通路を残す左右対称レイアウト。
+ // すべて薄壁。中央へ横からすぐ合流できず、壁端を回って侵入する。
+ // 上側：左から中央へ伸び、右側で下へ折れる。対になる下側は180度対称。
+ {x:300,y:205,w:500,h:14}, {x:786,y:205,w:14,h:105},
+ {x:480,y:300,w:320,h:14},
+ {x:480,y:406,w:320,h:14},
+ {x:480,y:406,w:14,h:105}, {x:480,y:497,w:500,h:14},
+ // 外周寄りの短壁。迂回路にも軽い読み合いを作る。
+ {x:260,y:150,w:180,h:12}, {x:840,y:558,w:180,h:12}
 ];
 const fieldPlayer={x:545,y:525,r:22,speed:235};
 const arenaGate={x:715,y:325,r:82};
@@ -205,19 +207,47 @@ function move(a,vx,vy,dt){
 function moveField(vx,vy,dt){let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}fieldPlayer.x=Math.max(80,Math.min(1200,fieldPlayer.x+vx*fieldPlayer.speed*dt));fieldPlayer.y=Math.max(110,Math.min(650,fieldPlayer.y+vy*fieldPlayer.speed*dt))}
 function ai(a,dt){
   let es=actors.filter(b=>b.alive&&b.team!==a.team),e=es.sort((p,q)=>dist(a,p)-dist(a,q))[0];if(!e)return;
-  let enemyBase=a.team?{x:185,y:360}:{x:1095,y:360},target=e;
-  let alliesNear=actors.filter(b=>b.alive&&b.team===a.team&&dist(a,b)<180).length;
-  if(dist(a,e)>240||alliesNear>1)target=enemyBase;
-  let ang=angle(a,target),d=dist(a,e);a.face=angle(a,e);let t=TYPES[a.type];
-  if((t.l==='shield'||t.l==='dualShield')&&d<130&&Math.random()<.06){a.shield=true;a.shieldA=angle(a,e)}else if(d>100)a.shield=false;if(t.l==='spearGuard'&&d<125&&a.spearGuardCd<=0&&Math.random()<.045)hand(a,'l',true);
-  if(a.type==='dagger'&&d<105&&Math.random()<.055)a.daggerGuard=true;else if(a.type==='dagger'&&d>125)a.daggerGuard=false;if(d<(a.type==='spear'?150:a.type==='dagger'?92:108)&&a.cd<=0&&!a.shield&&!a.daggerGuard){hand(a,'r',true);return;}
-  // 正面が壁なら、近い壁端へ少し進路を曲げる。長い壁でもAIが抜け道へ向かう。
-  let probe=26,px=a.x+Math.cos(ang)*probe,py=a.y+Math.sin(ang)*probe;
+  let enemyBase=a.team?{x:185,y:360}:{x:1095,y:360};
+  let d=dist(a,e), t=TYPES[a.type];
+  a.face=angle(a,e);
+
+  // 防御役も棒立ちにしない。敵との距離を保ちながら小さく巡回・横移動する。
+  a.aiClock=(a.aiClock||0)+dt;
+  let defending=false;
+  if((t.l==='shield'||t.l==='dualShield')&&d<145){
+    if(!a.shield&&Math.random()<.075){a.shield=true;a.shieldA=angle(a,e)}
+    defending=a.shield;
+  } else if(d>175) a.shield=false;
+  if(t.l==='spearGuard'&&d<135&&a.spearGuardCd<=0&&Math.random()<.05)hand(a,'l',true);
+  if(a.type==='dagger'&&d<112&&Math.random()<.06)a.daggerGuard=true;else if(a.type==='dagger'&&d>140)a.daggerGuard=false;
+  defending=defending||a.daggerGuard||a.spearGuard>0;
+
+  if(d<(a.type==='spear'?155:a.type==='dagger'?105:112)&&a.cd<=0&&!a.shield&&!a.daggerGuard&&a.spearGuard<=0){hand(a,'r',true);return;}
+
+  // 基本目標。遠ければ拠点へ、近ければ敵へ。防御中も完全停止せず横へ揺さぶる。
+  let target=(d>255)?enemyBase:e;
+  let ang=angle(a,target);
+  if(defending&&d<190){
+    let side=(a.i%2?1:-1)*(a.team?1:-1);
+    ang=angle(a,e)+side*Math.PI/2 + Math.sin(a.aiClock*2.2)*.22;
+  }
+
+  // 薄壁にぶつかる前に、上下どちらかの端へ回り込む。
+  let probe=34,px=a.x+Math.cos(ang)*probe,py=a.y+Math.sin(ang)*probe;
   if(collides(px,py,a.r)){
     let hit=obstacles.find(o=>px+a.r>o.x&&px-a.r<o.x+o.w&&py+a.r>o.y&&py-a.r<o.y+o.h);
     if(hit){
-      let left={x:hit.x-a.r-12,y:a.y},right={x:hit.x+hit.w+a.r+12,y:a.y};
-      let wp=dist(a,left)<dist(a,right)?left:right;ang=angle(a,wp);
+      let pts;
+      if(hit.w>=hit.h){
+        pts=[{x:hit.x-a.r-18,y:hit.y-a.r-18},{x:hit.x+hit.w+a.r+18,y:hit.y-a.r-18},
+             {x:hit.x-a.r-18,y:hit.y+hit.h+a.r+18},{x:hit.x+hit.w+a.r+18,y:hit.y+hit.h+a.r+18}];
+      }else{
+        pts=[{x:hit.x-a.r-18,y:hit.y-a.r-18},{x:hit.x+hit.w+a.r+18,y:hit.y-a.r-18},
+             {x:hit.x-a.r-18,y:hit.y+hit.h+a.r+18},{x:hit.x+hit.w+a.r+18,y:hit.y+hit.h+a.r+18}];
+      }
+      pts=pts.filter(p=>p.x>court.x+35&&p.x<court.x+court.w-35&&p.y>court.y+35&&p.y<court.y+court.h-35);
+      pts.sort((p,q)=>(dist(a,p)+dist(p,target))-(dist(a,q)+dist(q,target)));
+      if(pts[0])ang=angle(a,pts[0]);
     }
   }
   move(a,Math.cos(ang),Math.sin(ang),dt);
