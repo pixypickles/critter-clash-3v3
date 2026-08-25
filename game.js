@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.49';
+const VERSION='v0.50';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -1120,7 +1120,7 @@ function drawWeapon(k,side,active,anim=0){
      }else if(k==='katana'){
        // 刀は直線ではなく、緩やかに反った一本の刀身として描く。
        x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo(5,by);x.lineTo(18,by);x.stroke();
-       let fa=owner?.face||0,ux=-Math.sin(fa),uy=-Math.cos(fa);x.shadowBlur=18;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(16,by);x.quadraticCurveTo(len*.60+ux*11,(by+ty)*.5+uy*11,len+ux*5,ty+uy*5);x.stroke();
+       let fa=owner?.face||0,ux=Math.sin(fa),uy=Math.cos(fa);x.shadowBlur=18;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(16,by);x.quadraticCurveTo(len*.60+ux*11,(by+ty)*.5+uy*11,len+ux*5,ty+uy*5);x.stroke();
        x.shadowBlur=0;x.strokeStyle='#ffffff';x.globalAlpha=.82;x.lineWidth=2;x.beginPath();x.moveTo(20,by);x.quadraticCurveTo(len*.60+ux*10,(by+ty)*.5+uy*10,len-3+ux*4,ty+uy*4);x.stroke();x.globalAlpha=1;
      }else{
        x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo(7,by);x.lineTo(17,by);x.stroke();
