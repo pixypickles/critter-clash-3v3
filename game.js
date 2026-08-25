@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.48';
+const VERSION='v0.49';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -705,6 +705,8 @@ function ai(a,dt){
     return;
   }
 
+  // 双盾は守るだけでは試合に関与しにくいので、近距離ではシールドチャージで能動的に押し返す。
+  if(a.type==='doubleShield'&&d<235&&a.skillCd<=0&&a.stun<=0&&Math.random()<.028){a.face=angle(a,e);useSkill(a,'A');return}
   // 防御系も棒立ちにはしないが、以前ほど頻繁に防御し続けない。
   if((t.l==='shield'||t.l==='dualShield')&&d<150){
     if(!a.shield&&Math.random()<.035){a.shield=true;a.shieldA=angle(a,e)}
@@ -763,7 +765,8 @@ function ai(a,dt){
   // 防御中もじわっと横移動。止まり続けるだけにはしない。
   if(defending&&d<190){
     const side=((a.i+a.team)%2?1:-1);
-    ang=angle(a,e)+side*Math.PI/2 + Math.sin(a.aiClock*1.7)*.12;
+    if(a.type==='doubleShield')ang=d>92?angle(a,e):angle(a,e)+side*Math.PI/2;
+    else ang=angle(a,e)+side*Math.PI/2 + Math.sin(a.aiClock*1.7)*.12;
   }
 
   // 進行先に障害物がある時は、最寄りの上下端へ迂回する。
@@ -920,7 +923,7 @@ const RIFT_BOSSES={
  athos:{id:'athos',name:'決闘家 アトス',type:'rapier',skill:'tripleThrust',reward:'tripleThrust',rewardName:'三段刺突',hp:6,kind:'athos',colors:['#244d82','#d9e8f7','#b8954f']},
  aegis:{id:'aegis',name:'重装守護者 イージス',type:'doubleShield',skill:'aegisRush',reward:'aegisRush',rewardName:'鉄壁突進',hp:8,kind:'aegis',colors:['#4a535e','#d9e1e8','#8ea0b2']}
 };
-function beginBoss(b,meta){bossBattle={...meta,boss:b};enemyTeam={name:b.name,colors:b.colors||['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));let e=unit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=b.hp||3;e.maxHp=b.hp||3;e.r=b.kind==='troll'?52:b.kind==='bull'?50:b.kind==='wyvern'?48:46;e.bossKind=b.kind||null;e.beastKind=['troll','bull','wyvern'].includes(b.kind)?b.kind:null;e.beastState=b.kind==='wyvern'?'ground':b.kind==='bull'?'stalk':'';e.beastTimer=b.kind==='wyvern'?.8:b.kind==='bull'?.7:0;if(e.beastKind)e.species=b.kind;if(b.kind==='kannu'){e.speedBonus=65;e.r=50;e.mounted=true}actors.push(e);effects=[];blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent=`BOSS HP ${e.hp}/${e.maxHp}`;ui.status.textContent=e.beastKind?`${b.name}：魔獣の森。木の幹を避けて戦う。拠点なし、こちらは一撃OUT、魔獣は${e.maxHp}HITで撃破`:bossBattle.source==='rift'?`${b.name}：時空決闘。壁・拠点なし、強敵は${e.maxHp}HITで撃破`:`${b.name}：障害物・拠点なしの決闘。こちらは一撃OUT、強敵は${e.maxHp}HITで撃破`;syncModeButtons()}
+function beginBoss(b,meta){bossBattle={...meta,boss:b};enemyTeam={name:b.name,colors:b.colors||['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));let e=unit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=b.hp||3;e.maxHp=b.hp||3;e.r=b.kind==='troll'?52:b.kind==='bull'?50:b.kind==='wyvern'?48:46;e.bossKind=b.kind||null;e.beastKind=['troll','bull','wyvern'].includes(b.kind)?b.kind:null;e.beastState=b.kind==='wyvern'?'ground':b.kind==='bull'?'stalk':'';e.beastTimer=b.kind==='wyvern'?.8:b.kind==='bull'?.7:0;if(e.beastKind)e.species=b.kind;const bossLooks={musashi:['fox','#d7b168'],sasuke:['rabbit','#818aa2'],kojiro:['snowFox','#f3f7ff'],kannu:['frog','#5fbf73'],gladiator:['frog','#c77b48'],leon:['rabbit','#a9b6c7'],sieg:['fox','#b38a7a'],athos:['rabbit','#e8e0d4'],aegis:['frog','#91a4b3']};if(bossLooks[b.kind]){e.species=bossLooks[b.kind][0];e.furOverride=bossLooks[b.kind][1]}if(b.kind==='kannu'){e.speedBonus=65;e.r=50;e.mounted=true}actors.push(e);effects=[];blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent=`BOSS HP ${e.hp}/${e.maxHp}`;ui.status.textContent=e.beastKind?`${b.name}：魔獣の森。木の幹を避けて戦う。拠点なし、こちらは一撃OUT、魔獣は${e.maxHp}HITで撃破`:bossBattle.source==='rift'?`${b.name}：時空決闘。壁・拠点なし、強敵は${e.maxHp}HITで撃破`:`${b.name}：障害物・拠点なしの決闘。こちらは一撃OUT、強敵は${e.maxHp}HITで撃破`;syncModeButtons()}
 function startBoss(){if(progress.pendingBoss===null){ui.status.textContent='今は静かです。ランク大会を終えると強敵が現れます';return}let bi=Math.min(progress.pendingBoss,BOSSES.length-1),b=BOSSES[bi];beginBoss(b,{source:'trial',index:bi})}
 function startDojoBoss(kind){let b=DOJO_BOSSES[kind];if(!b)return;if(!progress.specialChampions.includes(b.specialId)){ui.status.textContent=`まず${kind==='long'?'長物限定大会':'軽量武器専門大会'}で優勝してください`;return}if(progress.dojoDefeated.includes(kind)){ui.status.textContent=`${kind==='long'?'長物道場':'軽量道場'}の奥義は修得済みです`;return}beginBoss(b,{source:'dojo',dojo:kind})}
 function openBeastMenu(){let unlocked=progress.beastUnlocked.filter(id=>BEAST_BOSSES[id]);if(!unlocked.length){ui.status.textContent='大会で優勝すると魔獣の気配が現れます';return}let list=q('#rankList');q('#tournamentTitle').textContent='魔獣の森';q('#tournamentMessage').textContent='戦う魔獣を選んでください。撃破済みの魔獣とも何度でも再戦できます。';list.innerHTML=unlocked.map(id=>{let b=BEAST_BOSSES[id],done=progress.beastDefeated.includes(id);return `<button class="rankBtn" data-beast="${id}"><b>${b.name}</b><small>${done?'撃破済み・再戦可能':'未撃破'}｜BOSS HP ${b.hp}</small></button>`}).join('');q('#tournamentStandings').innerHTML='<p class="note">魔獣戦は拠点なし。森の地形で戦います。</p>';list.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{q('#tournament').classList.add('hidden');startBeastBoss(btn.dataset.beast)});q('#tournament').classList.remove('hidden');mode='menu';syncModeButtons()}
@@ -956,7 +959,7 @@ function drawCuteFieldAnimal(px,py){x.save();x.translate(px,py);x.shadowBlur=8;x
 x.beginPath();x.arc(-13,-18,10,0,Math.PI*2);x.arc(13,-18,10,0,Math.PI*2);x.fill();x.fillStyle='#fffbe7';x.beginPath();x.arc(-13,-19,7,0,Math.PI*2);x.arc(13,-19,7,0,Math.PI*2);x.fill();x.fillStyle='#24392f';x.beginPath();x.arc(-12,-19,3,0,Math.PI*2);x.arc(12,-19,3,0,Math.PI*2);x.fill();x.strokeStyle='#234632';x.lineWidth=2.5;x.beginPath();x.arc(0,5,10,.2,2.9);x.stroke();x.fillStyle='#355a76';roundRect(-18,14,36,13,5);x.fill();x.fillStyle='#62c95b';x.beginPath();x.ellipse(-14,31,7,14,.35,0,Math.PI*2);x.ellipse(14,31,7,14,-.35,0,Math.PI*2);x.fill();x.shadowBlur=0;x.restore()}
 function drawMatch(){
  const forest=mode==='boss'&&bossBattle?.source==='beast',rift=mode==='boss'&&bossBattle?.source==='rift';
- if(rift){let grd=x.createRadialGradient(W/2,H/2,40,W/2,H/2,650);grd.addColorStop(0,'#27345d');grd.addColorStop(.55,'#171d3d');grd.addColorStop(1,'#080b1c');x.fillStyle=grd;x.fillRect(0,0,W,H);x.strokeStyle='#8d7cff55';x.lineWidth=3;for(let r=90;r<430;r+=70){x.beginPath();x.arc(W/2,H/2,r,0,Math.PI*2);x.stroke()} }else if(forest){
+ if(rift){let grd=x.createRadialGradient(W/2,H/2,30,W/2,H/2,680);grd.addColorStop(0,'#6577b8');grd.addColorStop(.48,'#394878');grd.addColorStop(1,'#18213f');x.fillStyle=grd;x.fillRect(0,0,W,H);x.globalAlpha=.30;x.fillStyle='#a9c7ff';x.beginPath();x.ellipse(W/2,H/2,480,235,0,0,Math.PI*2);x.fill();x.globalAlpha=1;x.strokeStyle='#c3b9ff88';x.lineWidth=3;for(let r=90;r<430;r+=70){x.beginPath();x.arc(W/2,H/2,r,0,Math.PI*2);x.stroke()}x.strokeStyle='#8eeaff44';for(let i=-5;i<=5;i++){x.beginPath();x.moveTo(W/2+i*78,court.y);x.lineTo(W/2+i*78,court.y+court.h);x.stroke()} }else if(forest){
    x.fillStyle='#284f32';x.fillRect(0,0,W,H);x.fillStyle='#6d9b5e';x.fillRect(court.x,court.y,court.w,court.h);
    // 土と苔のまだら模様。競技コートの白線は描かない。
    x.globalAlpha=.16;for(let i=0;i<28;i++){let px=court.x+((i*173)%court.w),py=court.y+((i*97)%court.h);x.fillStyle=i%2?'#315d3b':'#b69b67';x.beginPath();x.ellipse(px,py,42+(i%4)*9,18+(i%3)*7,(i%5)*.4,0,Math.PI*2);x.fill()}x.globalAlpha=1;
@@ -1017,11 +1020,11 @@ function drawBeastBoss(a){
  }
  x.shadowBlur=0;x.restore();
 }
-function drawActor(a){if(!a.alive)return;if(a.beastKind){drawBeastBoss(a);return}x.save();x.translate(a.x,a.y);x.scale(1.6,1.6);
+function drawActor(a){if(!a.alive)return;if(a.beastKind){drawBeastBoss(a);return}x.save();x.translate(a.x,a.y);if(a.mounted){x.save();x.translate(-4,28);x.shadowBlur=14;x.shadowColor='#e34b45';x.fillStyle='#a9282b';x.beginPath();x.ellipse(0,8,55,25,0,0,Math.PI*2);x.fill();x.fillStyle='#7d2025';x.beginPath();x.ellipse(47,-4,22,17,-.18,0,Math.PI*2);x.fill();x.strokeStyle='#762025';x.lineWidth=11;x.lineCap='round';x.beginPath();x.moveTo(-30,23);x.lineTo(-37,57);x.moveTo(-7,26);x.lineTo(-12,60);x.moveTo(22,24);x.lineTo(29,57);x.moveTo(38,18);x.lineTo(44,52);x.stroke();x.fillStyle='#e9c763';x.fillRect(-14,-10,34,11);x.strokeStyle='#3a2927';x.lineWidth=4;x.beginPath();x.moveTo(58,-10);x.lineTo(72,-18);x.stroke();x.shadowBlur=0;x.restore()}x.scale(1.6,1.6);if(mode==='boss'&&bossBattle?.source==='rift'){x.globalAlpha=.28;x.fillStyle='#dff8ff';x.beginPath();x.ellipse(0,20,30,12,0,0,Math.PI*2);x.fill();x.globalAlpha=1;x.shadowBlur=10;x.shadowColor='#b9e9ff'}
 let enemyCol=a.team?(enemyTeam?.colors?.[a.i%enemyTeam.colors.length]||'#e56f74'):null;
 let species=a.species;
 if(species===0)species='frog';else if(species===1)species='rabbit';else if(species===2)species='fox';
-let fur=species==='frog'?'#65bf58':species==='rabbit'?'#eee8dc':species==='snowFox'?'#f7fcff':'#df9a55';
+let fur=a.furOverride||(species==='frog'?'#65bf58':species==='rabbit'?'#eee8dc':species==='snowFox'?'#f7fcff':'#df9a55');
 // ユニフォーム：自チームは白地＋青の縦ストライプ。敵はチーム固有2〜3色。
 if(a.team){x.fillStyle=enemyCol;roundRect(-19,4,38,30,10);x.fill();x.fillStyle=enemyTeam?.colors?.[(a.i+1)%(enemyTeam?.colors?.length||1)]||'#fff';roundRect(-19,17,38,7,3);x.fill();}
 else{x.fillStyle='#ffffff';roundRect(-19,4,38,30,10);x.fill();x.fillStyle='#2f7fd3';roundRect(-14,4,7,30,2);x.fill();roundRect(4,4,7,30,2);x.fill();x.fillStyle='#9fe8ff';roundRect(-19,28,38,5,2);x.fill();}
@@ -1043,8 +1046,8 @@ if(species==='frog'){
 }
 x.strokeStyle='#3f493f';x.lineWidth=2;x.beginPath();x.arc(0,-2,7,.3,2.8);x.stroke();
 // 武器だけターゲット方向へ向ける
-x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;let spinning=effects.some(e=>e.kind==='spinSkill'&&e.owner===a&&e.t>0);if(!spinning&&!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}drawWeapon.owner=null;x.restore();
-if(a===controlled()){x.strokeStyle='#fff';x.lineWidth=3;x.beginPath();x.arc(0,2,34,0,Math.PI*2);x.stroke()}x.restore();x.fillStyle='#17382f';x.font='11px sans-serif';x.textAlign='center';x.fillText(TYPES[a.type].name,a.x,a.y+67);x.textAlign='start'}
+x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;let spinning=effects.some(e=>e.kind==='spinSkill'&&e.owner===a&&e.t>0);if(!spinning&&!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);if(a.bossKind==='musashi'&&a.type==='katana')drawWeapon('katana',-1,false,a.handAnimL||0);else drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}drawWeapon.owner=null;x.restore();
+x.shadowBlur=0;if(a===controlled()){x.strokeStyle='#fff';x.lineWidth=3;x.beginPath();x.arc(0,2,34,0,Math.PI*2);x.stroke()}x.restore();x.fillStyle='#17382f';x.font='11px sans-serif';x.textAlign='center';x.fillText(TYPES[a.type].name,a.x,a.y+67);x.textAlign='start'}
 const WEIGHT_COLORS={1:'#536dff',2:'#36a9ff',3:'#28d7c0',4:'#55df69',5:'#f2dc45',6:'#ff9b3d',7:'#ff4d4d'};
 function weaponWeight(k){
   if(k&&k.startsWith('dagger'))return 1;
@@ -1117,8 +1120,8 @@ function drawWeapon(k,side,active,anim=0){
      }else if(k==='katana'){
        // 刀は直線ではなく、緩やかに反った一本の刀身として描く。
        x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo(5,by);x.lineTo(18,by);x.stroke();
-       x.shadowBlur=18;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(16,by);x.quadraticCurveTo(len*.60,ty+11*side,len,ty+5*side);x.stroke();
-       x.shadowBlur=0;x.strokeStyle='#ffffff';x.globalAlpha=.82;x.lineWidth=2;x.beginPath();x.moveTo(20,by);x.quadraticCurveTo(len*.60,ty+10*side,len-3,ty+5*side);x.stroke();x.globalAlpha=1;
+       let fa=owner?.face||0,ux=-Math.sin(fa),uy=-Math.cos(fa);x.shadowBlur=18;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.moveTo(16,by);x.quadraticCurveTo(len*.60+ux*11,(by+ty)*.5+uy*11,len+ux*5,ty+uy*5);x.stroke();
+       x.shadowBlur=0;x.strokeStyle='#ffffff';x.globalAlpha=.82;x.lineWidth=2;x.beginPath();x.moveTo(20,by);x.quadraticCurveTo(len*.60+ux*10,(by+ty)*.5+uy*10,len-3+ux*4,ty+uy*4);x.stroke();x.globalAlpha=1;
      }else{
        x.strokeStyle='#6c625b';x.lineWidth=5;x.beginPath();x.moveTo(7,by);x.lineTo(17,by);x.stroke();
        x.strokeStyle=col;x.lineWidth=7;x.beginPath();x.moveTo(16,by);x.lineTo(len,ty);x.stroke();
