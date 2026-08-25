@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.54';
+const VERSION='v0.55';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -23,7 +23,7 @@ const SKILLS={
   nitenRush:{name:'二天連舞',owner:'katana'},
   substitution:{name:'変わり身の術',owner:'dagger'},
   shadowRush:{name:'ミラージュ・ランジ',owner:'rapier'},
-  eightShadows:{name:'八影分身',owner:'dagger'},
+  eightShadows:{name:'影分身',owner:'dagger'},
   tsubameGaeshi:{name:'燕返し',owner:'katana'},
   kannuSweep:{name:'騎将偃月斬',owner:'halberd'},
   gladiatorAdvance:{name:'闘士の進撃',owner:'sword'},
@@ -299,9 +299,12 @@ function useSkill(a,slot='A'){
     if(a.boss&&a.bossKind==='hanzo'){
       spawnHanzoClones(a,true);ui.status.textContent='HANZO：八影分身！ 本物は1体だけ';
     }else{
-      let e2=nearestEnemy(a);effects.push({kind:'eightShadows',owner:a,t:.72,max:.72});
-      if(e2){let aa=angle(a,e2),side=Math.random()<.5?-1:1;safePush(a,Math.cos(aa+side*Math.PI/2)*68,Math.sin(aa+side*Math.PI/2)*68);a.face=angle(a,e2);let sw={kind:'swing',weapon:'daggerAttack',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:124,arc:1.05,t:.42,max:.42,windup:.06,active:.14,recovery:.22,delay:.20,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:48,lungeApplied:false,knockback:18,specialHit:'八影斬り！'};effects.push(sw);a.attackPose=sw;}
-      ui.status.textContent='八影分身！ 幻影に紛れて斬り込む';
+      // プレイヤー版は八体ではなく一体の濃い分身。短時間の無敵で左右へ分かれ、本体が二連で斬り込む。
+      a[cdKey]=5.2;a.invuln=Math.max(a.invuln,.50);
+      let e2=nearestEnemy(a),ox=a.x,oy=a.y;
+      if(e2){let aa=angle(a,e2),side=Math.random()<.5?-1:1;effects.push({kind:'shadowClone',x:ox,y:oy,a:aa,side:-side,t:.82,max:.82});safePush(a,Math.cos(aa+side*Math.PI/2)*90,Math.sin(aa+side*Math.PI/2)*90);a.face=angle(a,e2);
+        for(let i=0;i<2;i++){let sw={kind:'swing',weapon:'daggerAttack',skill:true,side:i?'l':'r',x:a.x,y:a.y,a:a.face,range:132,arc:1.05,t:.38,max:.38,windup:.045,active:.13,recovery:.205,delay:.12+i*.16,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:36,lungeApplied:false,knockback:i?24:12,specialHit:i?'影分身・挟撃！':null,retarget:true,retargeted:false};effects.push(sw);if(i===0)a.attackPose=sw;}}
+      ui.status.textContent='影分身！ 分身と左右に分かれて二連斬り';
     }
   }else if(skill==='beastStep'){
     // 翼竜由来の汎用技。スキル枠に見合う高性能回避へ強化。
@@ -1124,7 +1127,7 @@ if(species==='frog'){
 }
 x.strokeStyle='#3f493f';x.lineWidth=2;x.beginPath();x.arc(0,-2,7,.3,2.8);x.stroke();
 // 武器だけターゲット方向へ向ける
-x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;let spinning=effects.some(e=>e.kind==='spinSkill'&&e.owner===a&&e.t>0);if(!spinning&&!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);if(a.bossKind==='musashi'&&a.type==='katana')drawWeapon('katana',-1,false,a.handAnimL||0);else drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}drawWeapon.owner=null;x.restore();
+x.save();x.rotate(a.face);let t=TYPES[a.type];drawWeapon.owner=a;let spinning=effects.some(e=>e.kind==='spinSkill'&&e.owner===a&&e.t>0),heavenFalling=effects.some(e=>e.kind==='heavenFall'&&e.owner===a&&e.t>0);if(!spinning&&!heavenFalling&&!(a.type==='spear'&&a.spearGuard>0)){drawWeapon(t.r,1,a.shield,a.handAnimR||0);if(a.bossKind==='musashi'&&a.type==='katana')drawWeapon('katana',-1,false,a.handAnimL||0);else drawWeapon(t.l,-1,a.shield,a.handAnimL||0)}drawWeapon.owner=null;x.restore();
 x.shadowBlur=0;if(a===controlled()){x.strokeStyle='#fff';x.lineWidth=3;x.beginPath();x.arc(0,2,34,0,Math.PI*2);x.stroke()}x.restore();x.fillStyle='#17382f';x.font='11px sans-serif';x.textAlign='center';x.fillText(TYPES[a.type].name,a.x,a.y+67);x.textAlign='start'}
 const WEIGHT_COLORS={1:'#536dff',2:'#36a9ff',3:'#28d7c0',4:'#55df69',5:'#f2dc45',6:'#ff9b3d',7:'#ff4d4d'};
 function weaponWeight(k){
@@ -1275,6 +1278,8 @@ function drawEffect(e){
    x.restore();
  }else if(e.kind==='eightShadows'){
    let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max;x.save();x.globalAlpha=.24*(1-p*.45);x.fillStyle='#b8e8ff';x.shadowBlur=14;x.shadowColor='#8fdcff';for(let i=0;i<8;i++){let aa=i*Math.PI/4+p*.35,rr=42+p*34;x.beginPath();x.ellipse(a.x+Math.cos(aa)*rr,a.y+Math.sin(aa)*rr,17,24,0,0,Math.PI*2);x.fill()}x.restore()}
+ }else if(e.kind==='shadowClone'){
+   let p=1-e.t/e.max,travel=Math.min(1,p*1.7),aa=e.a+(e.side||1)*Math.PI/2;x.save();x.globalAlpha=.42*(1-p*.65);x.translate(e.x+Math.cos(aa)*travel*92+Math.cos(e.a)*travel*52,e.y+Math.sin(aa)*travel*92+Math.sin(e.a)*travel*52);x.fillStyle='#b8e8ff';x.shadowBlur=18;x.shadowColor='#8fdcff';x.beginPath();x.ellipse(0,0,20,29,0,0,Math.PI*2);x.fill();x.globalAlpha=.55*(1-p);x.strokeStyle=weaponColor('daggerAttack');x.lineWidth=7;x.beginPath();x.moveTo(12,-8);x.lineTo(48,-22);x.moveTo(12,8);x.lineTo(48,22);x.stroke();x.restore();
  }else if(e.kind==='shadowRush'){
    let p=1-e.t/e.max,col='#70d8ff';x.save();x.globalAlpha=.34*(1-p*.7);x.translate(e.x+Math.cos(e.a)*p*180,e.y+Math.sin(e.a)*p*180);x.fillStyle=col;x.shadowBlur=18;x.shadowColor=col;x.beginPath();x.ellipse(0,0,22,30,0,0,Math.PI*2);x.fill();x.globalAlpha=.16;for(let i=1;i<=3;i++){x.beginPath();x.ellipse(-Math.cos(e.a)*i*28,-Math.sin(e.a)*i*28,19,27,0,0,Math.PI*2);x.fill()}x.restore();
  }else if(e.kind==='shadowPop'){let p=1-e.t/e.max;x.save();x.globalAlpha=.48*(1-p);x.strokeStyle='#8deaff';x.shadowBlur=18;x.shadowColor='#8deaff';x.lineWidth=6;x.beginPath();x.arc(e.x,e.y,24+p*44,0,Math.PI*2);x.stroke();x.fillStyle='#d8f8ff';x.font='bold 20px sans-serif';x.fillText('幻',e.x-10,e.y+7);x.restore();
