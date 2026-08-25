@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.42';
+const VERSION='v0.43';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -60,6 +60,14 @@ const obstacles=[
  {x:585,y:590,w:110,h:48,oval:true},
  {x:603,y:556,w:74,h:34,oval:true},
  {x:620,y:532,w:40,h:24,oval:true}
+
+];
+// 魔獣の森ボス戦専用。葉の茂みは大きく見せ、当たり判定は幹だけにして戦いやすさを優先。
+const forestTrees=[
+ {x:150,y:145,w:34,h:64,tree:true},{x:280,y:500,w:36,h:66,tree:true},
+ {x:450,y:120,w:32,h:60,tree:true},{x:510,y:540,w:34,h:62,tree:true},
+ {x:730,y:135,w:34,h:62,tree:true},{x:790,y:530,w:36,h:66,tree:true},
+ {x:1010,y:150,w:34,h:64,tree:true},{x:1110,y:495,w:36,h:66,tree:true}
 ];
 const fieldPlayer={x:300,y:220,r:22,speed:235};
 const homeGate={x:220,y:175,r:82},arenaGate={x:570,y:300,r:72},specialArenaGate={x:790,y:180,r:74},trainingGate={x:1060,y:145,r:78},longDojoGate={x:390,y:555,r:68},lightDojoGate={x:715,y:565,r:68},trialGate={x:1080,y:535,r:72},beastGate={x:930,y:565,r:72};
@@ -341,12 +349,12 @@ function attack(a,kind,side){
   let e={kind:cfg.kind,weapon:kind,side,x:a.x,y:a.y,a:a.face,range:cfg.range,arc:cfg.arc,t:total,max:total,windup:cfg.windup,active:cfg.active,recovery:cfg.recovery,team:a.team,owner:a,resolved:false,parry:false,recoveryApplied:false};
   a.attackPose=e;effects.push(e);
 }
-function activeObstacles(){return mode==='boss'?[]:obstacles}
+function activeObstacles(){return mode==='boss'?(bossBattle?.source==='beast'?forestTrees:[]):obstacles}
 function segmentHitsWall(x1,y1,x2,y2,pad=0){
   const steps=Math.max(4,Math.ceil(Math.hypot(x2-x1,y2-y1)/8));
   for(let i=1;i<=steps;i++){
     let u=i/steps,px=x1+(x2-x1)*u,py=y1+(y2-y1)*u;
-    if(activeObstacles().some(o=>px>o.x-pad&&px<o.x+o.w+pad&&py>o.y-pad&&py<o.y+o.h+pad))return {x:px,y:py,u};
+    for(let o of activeObstacles()){if(px>o.x-pad&&px<o.x+o.w+pad&&py>o.y-pad&&py<o.y+o.h+pad)return {x:px,y:py,u,o};}
   }
   return null;
 }
@@ -394,15 +402,32 @@ function parryAttacks(e){
   return false;
 }
 function pointSegDist(px,py,x1,y1,x2,y2){let vx=x2-x1,vy=y2-y1,wx=px-x1,wy=py-y1,c=vx*vx+vy*vy;if(c<=.0001)return Math.hypot(px-x1,py-y1);let t=Math.max(0,Math.min(1,(wx*vx+wy*vy)/c)),qx=x1+t*vx,qy=y1+t*vy;return Math.hypot(px-qx,py-qy)}
+
+function rustleTree(o,hitX=null,hitY=null){
+  if(!o?.tree)return;
+  let cx=o.x+o.w/2,cy=o.y-18;
+  effects.push({kind:'leaves',x:hitX??cx,y:hitY??cy,t:.78,max:.78,seed:Math.random()*999});
+}
+function attackTreeRustle(e){
+  if(e.treeFx||mode!=='boss'||bossBattle?.source!=='beast')return;
+  let a=e.owner;if(!a)return;
+  if(e.kind==='thrust'){
+    let sx=a.x+Math.cos(e.a)*24,sy=a.y+Math.sin(e.a)*24,ex=a.x+Math.cos(e.a)*e.range,ey=a.y+Math.sin(e.a)*e.range;
+    let wall=segmentHitsWall(sx,sy,ex,ey,4);if(wall?.o?.tree){e.treeFx=true;rustleTree(wall.o,wall.x,wall.y)}
+  }else{
+    for(let o of forestTrees){let cx=o.x+o.w/2,cy=o.y+o.h/2,d=Math.hypot(cx-a.x,cy-a.y),da=Math.abs(norm(Math.atan2(cy-a.y,cx-a.x)-e.a));if(d<e.range+28&&da<e.arc/2+.12){e.treeFx=true;rustleTree(o,cx,cy-10);break}}
+  }
+}
 function resolveAttack(e){
   let a=e.owner;if(!a||!a.alive)return;
   if(parryAttacks(e))return;
+  attackTreeRustle(e);
   let effectiveRange=e.range;
   if(e.weapon==='spear'||e.weapon==='rapier'){
     let sx=a.x+Math.cos(e.a)*26,sy=a.y+Math.sin(e.a)*26;
     let ex=a.x+Math.cos(e.a)*e.range,ey=a.y+Math.sin(e.a)*e.range;
     let wall=segmentHitsWall(sx,sy,ex,ey,3);
-    if(wall){effectiveRange=Math.max(34,e.range*wall.u);e.range=effectiveRange}
+    if(wall){effectiveRange=Math.max(34,e.range*wall.u);e.range=effectiveRange;if(wall.o?.tree)rustleTree(wall.o,wall.x,wall.y)}
   }
   let hit=[];
   for(let b of actors){
@@ -827,7 +852,7 @@ const DOJO_BOSSES={
  long:{name:'長物道場・破陣師範',type:'halberd',skill:'halberdDoubleSweep',reward:'longDojoArt',rewardName:'破陣の型',specialId:'long',colors:['#80521f','#e38a2b','#ffe1a6']},
  light:{name:'軽量道場・疾風師範',type:'rapier',skill:'fiveSlash',reward:'lightDojoArt',rewardName:'疾風の型',specialId:'light',colors:['#3268a8','#69d8ed','#f6fbff']}
 };
-function beginBoss(b,meta){bossBattle={...meta,boss:b};enemyTeam={name:b.name,colors:b.colors||['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));let e=unit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=b.hp||3;e.maxHp=b.hp||3;e.r=b.kind==='troll'?52:b.kind==='bull'?50:b.kind==='wyvern'?48:46;e.beastKind=b.kind||null;e.beastState=b.kind==='wyvern'?'ground':b.kind==='bull'?'stalk':'';e.beastTimer=b.kind==='wyvern'?.8:b.kind==='bull'?.7:0;e.species=b.kind||e.species;actors.push(e);effects=[];blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent=`BOSS HP ${e.hp}/${e.maxHp}`;ui.status.textContent=b.kind?`${b.name}：魔獣戦。障害物・拠点なし。こちらは一撃OUT、魔獣は${e.maxHp}HITで撃破`:`${b.name}：障害物・拠点なしの決闘。こちらは一撃OUT、強敵は${e.maxHp}HITで撃破`;syncModeButtons()}
+function beginBoss(b,meta){bossBattle={...meta,boss:b};enemyTeam={name:b.name,colors:b.colors||['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));let e=unit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=b.hp||3;e.maxHp=b.hp||3;e.r=b.kind==='troll'?52:b.kind==='bull'?50:b.kind==='wyvern'?48:46;e.beastKind=b.kind||null;e.beastState=b.kind==='wyvern'?'ground':b.kind==='bull'?'stalk':'';e.beastTimer=b.kind==='wyvern'?.8:b.kind==='bull'?.7:0;e.species=b.kind||e.species;actors.push(e);effects=[];blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent=`BOSS HP ${e.hp}/${e.maxHp}`;ui.status.textContent=b.kind?`${b.name}：魔獣の森。木の幹を避けて戦う。拠点なし、こちらは一撃OUT、魔獣は${e.maxHp}HITで撃破`:`${b.name}：障害物・拠点なしの決闘。こちらは一撃OUT、強敵は${e.maxHp}HITで撃破`;syncModeButtons()}
 function startBoss(){if(progress.pendingBoss===null){ui.status.textContent='今は静かです。ランク大会を終えると強敵が現れます';return}let bi=Math.min(progress.pendingBoss,BOSSES.length-1),b=BOSSES[bi];beginBoss(b,{source:'trial',index:bi})}
 function startDojoBoss(kind){let b=DOJO_BOSSES[kind];if(!b)return;if(!progress.specialChampions.includes(b.specialId)){ui.status.textContent=`まず${kind==='long'?'長物限定大会':'軽量武器専門大会'}で優勝してください`;return}if(progress.dojoDefeated.includes(kind)){ui.status.textContent=`${kind==='long'?'長物道場':'軽量道場'}の奥義は修得済みです`;return}beginBoss(b,{source:'dojo',dojo:kind})}
 function startBeastBoss(){let unlocked=progress.beastUnlocked.filter(id=>BEAST_BOSSES[id]);if(!unlocked.length){ui.status.textContent='大会で優勝すると魔獣の気配が現れます';return}let fresh=unlocked.filter(id=>!progress.beastDefeated.includes(id));let id;if(fresh.length){id=fresh[0]}else{id=unlocked[beastReplayIndex%unlocked.length];beastReplayIndex=(beastReplayIndex+1)%unlocked.length;ui.status.textContent=`再戦：${BEAST_BOSSES[id].name}`}let b=BEAST_BOSSES[id];beginBoss(b,{source:'beast',beast:id,replay:progress.beastDefeated.includes(id)})}
@@ -857,7 +882,29 @@ x.shadowBlur=0;x.restore()}
 function drawCuteFieldAnimal(px,py){x.save();x.translate(px,py);x.shadowBlur=8;x.shadowColor='#356b45';x.fillStyle='#62c95b';x.beginPath();x.arc(0,4,21,0,Math.PI*2);x.fill();
 // 前作風に目玉を頭の上へしっかり飛び出させる
 x.beginPath();x.arc(-13,-18,10,0,Math.PI*2);x.arc(13,-18,10,0,Math.PI*2);x.fill();x.fillStyle='#fffbe7';x.beginPath();x.arc(-13,-19,7,0,Math.PI*2);x.arc(13,-19,7,0,Math.PI*2);x.fill();x.fillStyle='#24392f';x.beginPath();x.arc(-12,-19,3,0,Math.PI*2);x.arc(12,-19,3,0,Math.PI*2);x.fill();x.strokeStyle='#234632';x.lineWidth=2.5;x.beginPath();x.arc(0,5,10,.2,2.9);x.stroke();x.fillStyle='#355a76';roundRect(-18,14,36,13,5);x.fill();x.fillStyle='#62c95b';x.beginPath();x.ellipse(-14,31,7,14,.35,0,Math.PI*2);x.ellipse(14,31,7,14,-.35,0,Math.PI*2);x.fill();x.shadowBlur=0;x.restore()}
-function drawMatch(){x.fillStyle='#688ca1';x.fillRect(0,0,W,H);x.fillStyle='#a9d0ef';x.fillRect(court.x,court.y,court.w,court.h);x.strokeStyle='#fff7d8';x.lineWidth=5;x.strokeRect(court.x,court.y,court.w,court.h);x.setLineDash([10,11]);x.beginPath();x.moveTo(640,court.y);x.lineTo(640,court.y+court.h);x.stroke();x.setLineDash([]);if(mode!=='boss')for(let o of obstacles){let rr=o.oval?Math.min(o.w,o.h)*.42:13;x.fillStyle='#eef0e7';roundRect(o.x,o.y,o.w,o.h,rr);x.fill();x.fillStyle='#d6ddd6';roundRect(o.x+7,o.y+7,o.w-14,o.h-14,Math.max(8,rr-7));x.fill()}if(mode!=='boss'){base(130,360,'#4d83dc');base(1150,360,'#e26368')}for(let a of actors)drawActor(a);for(let e of effects)drawEffect(e)}
+function drawMatch(){
+ const forest=mode==='boss'&&bossBattle?.source==='beast';
+ if(forest){
+   x.fillStyle='#284f32';x.fillRect(0,0,W,H);x.fillStyle='#6d9b5e';x.fillRect(court.x,court.y,court.w,court.h);
+   // 土と苔のまだら模様。競技コートの白線は描かない。
+   x.globalAlpha=.16;for(let i=0;i<28;i++){let px=court.x+((i*173)%court.w),py=court.y+((i*97)%court.h);x.fillStyle=i%2?'#315d3b':'#b69b67';x.beginPath();x.ellipse(px,py,42+(i%4)*9,18+(i%3)*7,(i%5)*.4,0,Math.PI*2);x.fill()}x.globalAlpha=1;
+   x.fillStyle='#856a47';x.beginPath();x.ellipse(640,360,370,120,0,0,Math.PI*2);x.fill();x.globalAlpha=.28;x.fillStyle='#c9b37b';x.beginPath();x.ellipse(640,360,325,88,0,0,Math.PI*2);x.fill();x.globalAlpha=1;
+   drawForestTrees();
+ }else{
+   x.fillStyle='#688ca1';x.fillRect(0,0,W,H);x.fillStyle='#a9d0ef';x.fillRect(court.x,court.y,court.w,court.h);x.strokeStyle='#fff7d8';x.lineWidth=5;x.strokeRect(court.x,court.y,court.w,court.h);x.setLineDash([10,11]);x.beginPath();x.moveTo(640,court.y);x.lineTo(640,court.y+court.h);x.stroke();x.setLineDash([]);
+   if(mode!=='boss')for(let o of obstacles){let rr=o.oval?Math.min(o.w,o.h)*.42:13;x.fillStyle='#eef0e7';roundRect(o.x,o.y,o.w,o.h,rr);x.fill();x.fillStyle='#d6ddd6';roundRect(o.x+7,o.y+7,o.w-14,o.h-14,Math.max(8,rr-7));x.fill()}
+   if(mode!=='boss'){base(130,360,'#4d83dc');base(1150,360,'#e26368')}
+ }
+ for(let a of actors)drawActor(a);for(let e of effects)drawEffect(e)
+}
+function drawForestTrees(){
+ for(let o of forestTrees){let cx=o.x+o.w/2,base=o.y+o.h;
+   x.save();x.translate(cx,base);x.fillStyle='#76553a';x.fillRect(-o.w/2, -o.h, o.w, o.h);x.fillStyle='#5b422f';x.fillRect(-o.w/2+5,-o.h,o.w-10,o.h);
+   x.fillStyle='#315f38';x.beginPath();x.arc(-22,-o.h-4,34,0,Math.PI*2);x.arc(12,-o.h-18,40,0,Math.PI*2);x.arc(34,-o.h+2,30,0,Math.PI*2);x.arc(0,-o.h+10,36,0,Math.PI*2);x.fill();
+   x.fillStyle='#4f7d42';x.globalAlpha=.8;x.beginPath();x.arc(-8,-o.h-24,22,0,Math.PI*2);x.arc(25,-o.h-10,18,0,Math.PI*2);x.fill();x.restore();x.globalAlpha=1;
+ }
+}
+
 function roundRect(px,py,w,h,r){x.beginPath();x.roundRect(px,py,w,h,r)}
 function base(px,py,col){x.strokeStyle=col;x.lineWidth=8;x.beginPath();x.arc(px,py,35,0,Math.PI*2);x.stroke();x.globalAlpha=.22;x.fillStyle=col;x.fill();x.globalAlpha=1}
 function drawBeastBoss(a){
@@ -1016,6 +1063,8 @@ function drawEffect(e){
      x.globalAlpha=.82;x.strokeStyle='#fff';x.shadowBlur=8;x.lineWidth=e.weapon==='greatsword'?4:3;
      x.beginPath();x.moveTo(a.x+Math.cos(ang)*(inner+6),a.y+Math.sin(ang)*(inner+6));x.lineTo(a.x+Math.cos(ang)*(rr-5),a.y+Math.sin(ang)*(rr-5));x.stroke();
    }
+ }else if(e.kind==='leaves'){
+   let p=1-e.t/e.max;for(let i=0;i<12;i++){let a=e.seed+i*2.17,dx=Math.cos(a)*((18+i*5)*p),dy=(i%3-1)*9*p+34*p*p;x.globalAlpha=.75*(1-p);x.fillStyle=i%2?'#78a84d':'#4e7d3e';x.save();x.translate(e.x+dx,e.y+dy);x.rotate(a+p*4);x.beginPath();x.ellipse(0,0,5,2.5,.4,0,Math.PI*2);x.fill();x.restore()}x.globalAlpha=1;
  }else if(e.kind==='diveMark'){let p=1-e.t/e.max;x.globalAlpha=.55+Math.sin(p*18)*.2;x.strokeStyle='#ffdd72';x.lineWidth=5;x.beginPath();x.arc(e.x,e.y,38-p*12,0,Math.PI*2);x.stroke();x.beginPath();x.moveTo(e.x-24,e.y);x.lineTo(e.x+24,e.y);x.moveTo(e.x,e.y-24);x.lineTo(e.x,e.y+24);x.stroke();
  }else if(e.kind==='bossClub'){let a=e.owner;if(a&&a.alive){let elapsed=e.max-e.t,ph=elapsed<e.windup?'windup':elapsed<e.windup+e.active?'active':'recovery';x.globalAlpha=ph==='active'?.52:.18;x.strokeStyle='#e4b46c';x.shadowBlur=18;x.shadowColor='#e4b46c';x.lineWidth=16;x.beginPath();if(e.attackKind==='smash'){x.arc(a.x,a.y,150,a.face-.22,a.face+.22)}else{x.arc(a.x,a.y,176,a.face-1.05,a.face+1.05)}x.stroke();}
  }else if(e.kind==='beastStep'){let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max;x.globalAlpha=.35*(1-p);x.strokeStyle='#8de7ff';x.lineWidth=7;x.beginPath();x.arc(a.x,a.y,28+p*38,0,Math.PI*2);x.stroke();}
