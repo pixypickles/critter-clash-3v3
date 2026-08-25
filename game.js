@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.57';
+const VERSION='v0.59';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -542,7 +542,7 @@ function blocked(def,atk,source=null){
     if(def.substitutionReady&&def.type==='dagger'){
       def.substitutionReady=false;def.counterCharges=0;def.counterT=0;def.invuln=Math.max(def.invuln,.42);atk.stun=Math.max(atk.stun,.18);
       const ox=def.x,oy=def.y,aa=angle(def,atk),side=Math.random()<.5?-1:1;
-      effects.push({kind:'subLog',x:ox,y:oy,t:.78,max:.78});
+      effects.push({kind:'subLog',x:ox,y:oy,t:.92,max:.92,seed:Math.random()*9});
       // 相手の側面～やや背後へ瞬間移動。壁際では safePush が通れる位置までに抑える。
       safePush(def,Math.cos(aa+side*Math.PI/2)*72,Math.sin(aa+side*Math.PI/2)*72);
       safePush(def,Math.cos(aa)*34,Math.sin(aa)*34);
@@ -917,7 +917,28 @@ function update(dt){
     }else if(e.kind==='heavenFall'){
       let elapsed=e.max-e.t,impactAt=e.windup+e.air;
       if(elapsed>=impactAt&&!e.resolved){resolveHeavenFall(e);e.resolved=true}
-    }else if(e.kind==='subLog'){x.globalAlpha=e.t/e.max;x.fillStyle='#8b5a2b';x.fillRect(e.x-10,e.y-30,20,58);x.fillStyle='#5ea64e';x.beginPath();x.arc(e.x,e.y-32,23,0,Math.PI*2);x.fill();
+    }else if(e.kind==='subLog'){
+   // 変わり身は「外に生えた木」ではなく、忍術の身代わり用の丸太。
+   // 白煙の中に縦向きの丸太が一瞬だけ残り、クナイが刺さっている。
+   const life=Math.max(0,Math.min(1,e.t/e.max)),appear=Math.min(1,(1-life)*6.5),fade=Math.min(1,life*2.4),alpha=appear*fade;
+   x.save();x.setTransform(1,0,0,1,e.x,e.y);x.globalCompositeOperation='source-over';x.shadowBlur=0;x.globalAlpha=alpha;
+   // 煙。丸太より先に大きく広がって、時間とともに薄くなる。
+   const spread=(1-life)*34,sa=.72*Math.min(1,(1-life)*9)*fade;
+   x.fillStyle='#f7fbff';x.strokeStyle='#bcc6cf';x.lineWidth=2.5;
+   [[-25,-18,13],[23,-22,15],[-30,15,14],[29,13,12],[0,-38,12],[4,34,13]].forEach((v,i)=>{x.globalAlpha=sa*(1-i*.035);x.beginPath();x.arc(v[0]+Math.cos((e.seed||0)+i)*spread*.30,v[1]+Math.sin((e.seed||0)*1.7+i)*spread*.24,v[2]+spread*.16,0,Math.PI*2);x.fill();x.stroke();});
+   x.globalAlpha=alpha;
+   // 丸太本体。円柱らしく上下を楕円にして、樹皮の筋を入れる。
+   x.fillStyle='#a9632c';x.strokeStyle='#5c351d';x.lineWidth=4;
+   x.beginPath();x.roundRect(-18,-34,36,68,10);x.fill();x.stroke();
+   x.fillStyle='#d89a49';x.beginPath();x.ellipse(0,-33,18,7,0,0,Math.PI*2);x.fill();x.stroke();
+   x.beginPath();x.ellipse(0,34,18,7,0,0,Math.PI*2);x.fill();x.stroke();
+   x.strokeStyle='#7b431f';x.lineWidth=2.5;x.beginPath();x.moveTo(-9,-22);x.lineTo(-5,20);x.moveTo(4,-20);x.lineTo(8,17);x.moveTo(11,-6);x.lineTo(13,24);x.stroke();
+   // 左右の短い枝。
+   x.strokeStyle='#6a3c20';x.lineWidth=7;x.lineCap='round';x.beginPath();x.moveTo(-16,-2);x.lineTo(-31,3);x.moveTo(16,8);x.lineTo(29,2);x.stroke();
+   x.lineCap='butt';
+   // 刺さったクナイ。短剣ゲームなので手裏剣ではなく小型クナイ風。
+   x.save();x.translate(18,-8);x.rotate(-.45);x.fillStyle='#30343b';x.strokeStyle='#12151a';x.lineWidth=2;x.beginPath();x.moveTo(0,0);x.lineTo(22,-5);x.lineTo(22,5);x.closePath();x.fill();x.stroke();x.fillStyle='#4a4f58';x.fillRect(20,-3,12,6);x.strokeStyle='#1b1e23';x.lineWidth=3;x.beginPath();x.arc(35,0,5,0,Math.PI*2);x.stroke();x.restore();
+   x.restore();
  }else if(e.kind==='bossClub'){
       let elapsed=e.max-e.t,ph=elapsed<e.windup?'windup':elapsed<e.windup+e.active?'active':'recovery';if(ph==='active'&&!e.resolved){resolveBossClub(e);e.resolved=true}
     }
@@ -1031,7 +1052,13 @@ function restartBossBattle(){if(!bossBattle)return;if(bossBattle.source==='dojo'
 function finishBoss(won){if(!bossBattle)return;roundOver=1;let b=bossBattle.boss;if(won){if(bossBattle.source==='rift'){let id=bossBattle.rift;if(!progress.riftDefeated.includes(id))progress.riftDefeated.push(id);for(let sk of (b.rewards||[b.reward]).filter(Boolean))if(!progress.unlockedSkills.includes(sk))progress.unlockedSkills.push(sk);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='時の武人に勝利！';ui.rr.textContent=`奥義「${b.rewardName}」を修得！ 時空の歪みでは何度でも再戦できます。`}else if(bossBattle.source==='dojo'){let kind=bossBattle.dojo;if(!progress.dojoDefeated.includes(kind))progress.dojoDefeated.push(kind);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='道場制覇！';ui.rr.textContent=`専用奥義「${b.rewardName}」を修得！ ホームで対象武器に装備できます。`}else if(bossBattle.source==='beast'){let id=bossBattle.beast;if(!progress.beastDefeated.includes(id))progress.beastDefeated.push(id);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent=bossBattle.replay?'魔獣再撃破！':'魔獣撃破！';ui.rr.textContent=bossBattle.replay?'魔獣の森では撃破済みの魔獣とも何度でも再戦できます。':(b.reward?`魔獣から新スキル「${b.rewardName}」を会得！ 全武器で装備できます。`:(id==='bull'?(progress.unlockedSkills.includes('rapierCounter')?'猛牛の突進を見切った経験が残った。':'白角の猛牛を撃破。レイピアで突進をパリィすると何かを掴めそうだ。'):(progress.unlockedSkills.includes('katanaCounter')?'翼竜の急降下を受け流した経験が残った。':'蒼翼の急降下を刀で受け流すと何かを掴めそうだ。')))}else{let idx=bossBattle.index;if(!progress.defeatedBosses.includes(idx))progress.defeatedBosses.push(idx);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);if(idx===3&&!progress.defeatedBosses.includes(4)){progress.pendingBoss=4}else{progress.pendingBoss=null}saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='強敵撃破！';ui.rr.textContent=b.reward?`新スキル「${b.rewardName}」を獲得！ ホームで対応武器に装備できます。`:(idx===3?`${b.name}を撃破！ 修練の地に「疾影の忍 SASUKE」が現れました。`:`${b.name}を撃破しました。`)}}else{ui.rt.textContent='修練失敗';ui.rr.textContent='強敵はその場に残っています。編成を整えて再挑戦できます。'}q('#rematch').textContent=won?'フィールドへ':'再挑戦';q('#fieldBack').textContent='フィールドへ';ui.result.classList.remove('hidden');bossBattle.resultWon=won}
 function leaveBoss(){bossBattle=null;ui.result.classList.add('hidden');mode='field';actors=[];effects=[];ui.mode.textContent='FIELD';ui.score.textContent='0 - 0';ui.status.textContent='修練から戻りました';syncModeButtons()}
 
-function draw(){x.clearRect(0,0,W,H);if(mode==='field')drawField();else drawMatch()}
+function draw(){
+  // 描画状態が一つのエフェクトから次フレームへ漏れないよう、毎フレーム完全に初期化する。
+  // 変わり身成功時に緑色の描画状態が残り続ける不具合への安全策も兼ねる。
+  x.setTransform(1,0,0,1,0,0);x.globalAlpha=1;x.globalCompositeOperation='source-over';x.shadowBlur=0;x.shadowColor='transparent';x.setLineDash([]);x.lineCap='butt';x.lineJoin='miter';
+  x.clearRect(0,0,W,H);if(mode==='field')drawField();else drawMatch();
+  x.setTransform(1,0,0,1,0,0);x.globalAlpha=1;x.globalCompositeOperation='source-over';x.shadowBlur=0;x.setLineDash([]);
+}
 function drawField(){x.fillStyle='#a7d28d';x.fillRect(0,0,W,H);x.fillStyle='#d9cc9e';x.lineWidth=95;x.lineCap='round';x.beginPath();x.moveTo(120,610);x.bezierCurveTo(280,500,480,420,650,360);x.bezierCurveTo(820,300,980,220,1150,120);x.strokeStyle='#d9cc9e';x.stroke();x.lineCap='butt';place(homeGate.x,homeGate.y,'ホーム','🏠');place(arenaGate.x,arenaGate.y,'競技場','🏟');place(specialArenaGate.x,specialArenaGate.y,'特別競技場','🏟');place(trainingGate.x,trainingGate.y,'練習場','🌳');drawLongDojo(longDojoGate.x,longDojoGate.y,progress.specialChampions.includes('long')&&!progress.dojoDefeated.includes('long')?'長物道場・師範':'長物道場');drawLightDojo(lightDojoGate.x,lightDojoGate.y,progress.specialChampions.includes('light')&&!progress.dojoDefeated.includes('light')?'軽量道場・師範':'軽量道場');place(trialGate.x,trialGate.y,progress.pendingBoss===null?'修練の地':'強敵出現！','⛩️');drawBeastArea(beastGate.x,beastGate.y);drawRift(riftGate.x,riftGate.y);x.fillStyle='#24483b';x.font='bold 28px sans-serif';x.fillText('けもの競技村',55,65);x.font='18px sans-serif';x.fillText('ホームで編成、練習場で1対1',55,94);for(let g of [homeGate,arenaGate,specialArenaGate,trainingGate,longDojoGate,lightDojoGate,trialGate,beastGate,riftGate]){x.strokeStyle='#ffffffaa';x.lineWidth=3;x.setLineDash([8,8]);x.beginPath();x.arc(g.x,g.y,g.r,0,Math.PI*2);x.stroke()}x.setLineDash([]);drawCuteFieldFox(fieldPlayer.x,fieldPlayer.y);x.fillStyle='#24483b';x.font='bold 16px sans-serif';x.textAlign='center';x.fillText('あなた',fieldPlayer.x,fieldPlayer.y+44);x.textAlign='start'}
 function nearestFacility(){let fs=[{name:'ホーム',gate:homeGate,id:'home'},{name:'競技場',gate:arenaGate,id:'arena'},{name:'特別競技場',gate:specialArenaGate,id:'specialArena'},{name:'練習場',gate:trainingGate,id:'training'},{name:'長物道場',gate:longDojoGate,id:'longDojo'},{name:'軽量道場',gate:lightDojoGate,id:'lightDojo'},{name:progress.pendingBoss===null?'修練の地':'強敵の気配',gate:trialGate,id:'trial'},{name:progress.beastUnlocked.some(id=>!progress.beastDefeated.includes(id))?'魔獣の森・強敵出現':progress.beastUnlocked.length?'魔獣の森・再戦':'魔獣の森',gate:beastGate,id:'beast'},{name:progress.rankChampions.includes('legend')?'時空の歪み':'時空の歪み・不安定',gate:riftGate,id:'rift'}].map(f=>({...f,d:Math.hypot(fieldPlayer.x-f.gate.x,fieldPlayer.y-f.gate.y)})).filter(f=>f.d<f.gate.r);return fs.sort((a,b)=>a.d-b.d)[0]||null}
 function drawRift(px,py){x.save();x.translate(px,py);let t=performance.now()/650;x.strokeStyle='#9c7cff';x.shadowColor='#72e7ff';x.shadowBlur=18;x.lineWidth=7;for(let i=0;i<3;i++){x.globalAlpha=.75-i*.16;x.beginPath();x.ellipse(0,0,28+i*10,48-i*7,t+i*.8,0,Math.PI*2);x.stroke()}x.globalAlpha=1;x.fillStyle='#2c2450';x.font='bold 18px sans-serif';x.textAlign='center';x.fillText(progress.rankChampions.includes('legend')?'時空の歪み':'時空の歪み？',0,72);x.textAlign='start';x.restore()}
@@ -1269,7 +1296,28 @@ function drawEffect(e){
  }else if(e.kind==='leaves'){
    let p=1-e.t/e.max;for(let i=0;i<12;i++){let a=e.seed+i*2.17,dx=Math.cos(a)*((18+i*5)*p),dy=(i%3-1)*9*p+34*p*p;x.globalAlpha=.75*(1-p);x.fillStyle=i%2?'#78a84d':'#4e7d3e';x.save();x.translate(e.x+dx,e.y+dy);x.rotate(a+p*4);x.beginPath();x.ellipse(0,0,5,2.5,.4,0,Math.PI*2);x.fill();x.restore()}x.globalAlpha=1;
  }else if(e.kind==='diveMark'){let p=1-e.t/e.max;x.globalAlpha=.55+Math.sin(p*18)*.2;x.strokeStyle='#ffdd72';x.lineWidth=5;x.beginPath();x.arc(e.x,e.y,38-p*12,0,Math.PI*2);x.stroke();x.beginPath();x.moveTo(e.x-24,e.y);x.lineTo(e.x+24,e.y);x.moveTo(e.x,e.y-24);x.lineTo(e.x,e.y+24);x.stroke();
- }else if(e.kind==='subLog'){x.globalAlpha=e.t/e.max;x.fillStyle='#8b5a2b';x.fillRect(e.x-10,e.y-30,20,58);x.fillStyle='#5ea64e';x.beginPath();x.arc(e.x,e.y-32,23,0,Math.PI*2);x.fill();
+ }else if(e.kind==='subLog'){
+   // 変わり身は「外に生えた木」ではなく、忍術の身代わり用の丸太。
+   // 白煙の中に縦向きの丸太が一瞬だけ残り、クナイが刺さっている。
+   const life=Math.max(0,Math.min(1,e.t/e.max)),appear=Math.min(1,(1-life)*6.5),fade=Math.min(1,life*2.4),alpha=appear*fade;
+   x.save();x.setTransform(1,0,0,1,e.x,e.y);x.globalCompositeOperation='source-over';x.shadowBlur=0;x.globalAlpha=alpha;
+   // 煙。丸太より先に大きく広がって、時間とともに薄くなる。
+   const spread=(1-life)*34,sa=.72*Math.min(1,(1-life)*9)*fade;
+   x.fillStyle='#f7fbff';x.strokeStyle='#bcc6cf';x.lineWidth=2.5;
+   [[-25,-18,13],[23,-22,15],[-30,15,14],[29,13,12],[0,-38,12],[4,34,13]].forEach((v,i)=>{x.globalAlpha=sa*(1-i*.035);x.beginPath();x.arc(v[0]+Math.cos((e.seed||0)+i)*spread*.30,v[1]+Math.sin((e.seed||0)*1.7+i)*spread*.24,v[2]+spread*.16,0,Math.PI*2);x.fill();x.stroke();});
+   x.globalAlpha=alpha;
+   // 丸太本体。円柱らしく上下を楕円にして、樹皮の筋を入れる。
+   x.fillStyle='#a9632c';x.strokeStyle='#5c351d';x.lineWidth=4;
+   x.beginPath();x.roundRect(-18,-34,36,68,10);x.fill();x.stroke();
+   x.fillStyle='#d89a49';x.beginPath();x.ellipse(0,-33,18,7,0,0,Math.PI*2);x.fill();x.stroke();
+   x.beginPath();x.ellipse(0,34,18,7,0,0,Math.PI*2);x.fill();x.stroke();
+   x.strokeStyle='#7b431f';x.lineWidth=2.5;x.beginPath();x.moveTo(-9,-22);x.lineTo(-5,20);x.moveTo(4,-20);x.lineTo(8,17);x.moveTo(11,-6);x.lineTo(13,24);x.stroke();
+   // 左右の短い枝。
+   x.strokeStyle='#6a3c20';x.lineWidth=7;x.lineCap='round';x.beginPath();x.moveTo(-16,-2);x.lineTo(-31,3);x.moveTo(16,8);x.lineTo(29,2);x.stroke();
+   x.lineCap='butt';
+   // 刺さったクナイ。短剣ゲームなので手裏剣ではなく小型クナイ風。
+   x.save();x.translate(18,-8);x.rotate(-.45);x.fillStyle='#30343b';x.strokeStyle='#12151a';x.lineWidth=2;x.beginPath();x.moveTo(0,0);x.lineTo(22,-5);x.lineTo(22,5);x.closePath();x.fill();x.stroke();x.fillStyle='#4a4f58';x.fillRect(20,-3,12,6);x.strokeStyle='#1b1e23';x.lineWidth=3;x.beginPath();x.arc(35,0,5,0,Math.PI*2);x.stroke();x.restore();
+   x.restore();
  }else if(e.kind==='bossClub'){
    let a=e.owner;if(a&&a.alive){let elapsed=e.max-e.t,ph=elapsed<e.windup?'windup':elapsed<e.windup+e.active?'active':'recovery',q=e.attackKind==='smash'?Math.min(1,elapsed/e.windup):Math.min(1,elapsed/e.windup);
      // 棍棒そのものの太い残像。叩きつけは頭上から地面へ、薙ぎは横方向へ弧を描く。
@@ -1350,6 +1398,7 @@ function drawEffect(e){
    if(e.kind==='block'||e.kind==='clash'||e.kind==='out'){x.shadowBlur=0;x.font='bold 26px sans-serif';x.fillStyle=e.kind==='block'?'#fff':e.kind==='clash'?'#fff7a6':'#3c3028';x.fillText(e.kind==='block'?'BLOCK!':e.kind==='clash'?'CLASH!':'OUT!',e.x-35,e.y-38)}
  }
  x.restore();
+ x.globalCompositeOperation='source-over';
 }
 
 q('#tournamentClose').onclick=()=>{q('#tournament').classList.add('hidden');mode='field';ui.mode.textContent='FIELD';ui.status.textContent='競技場から出ました';syncModeButtons()};
