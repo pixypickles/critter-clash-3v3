@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.43';
+const VERSION='v0.44';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -597,21 +597,27 @@ function beastAI(a,dt){
     }
     if(a.beastState==='recover'){if(a.beastTimer<=0){a.beastState='stalk';a.beastTimer=1.05;}return}
   }else if(a.beastKind==='troll'){
-    // トロールは遅いが棍棒の一撃が重い。振りかぶりを見て避ける／受けるボス。
+    // トロールは「振り上げ→振り下ろし→着地」が見て分かる重量ボス。
     let d=dist(a,e);if(a.beastTimer>0)return;
-    if(d>170){move(a,Math.cos(a.face)*.34,Math.sin(a.face)*.34,dt);return}
+    if(d>175){move(a,Math.cos(a.face)*.30,Math.sin(a.face)*.30,dt);return}
     if(a.cd<=0){
-      let kind=Math.random()<.55?'clubSmash':'clubSweep';
-      if(kind==='clubSmash')effects.push({kind:'bossClub',owner:a,attackKind:'smash',t:.92,max:.92,windup:.46,active:.18,recovery:.28,resolved:false});
-      else effects.push({kind:'bossClub',owner:a,attackKind:'sweep',t:1.02,max:1.02,windup:.42,active:.22,recovery:.38,resolved:false});
-      a.cd=1.45;a.beastTimer=.36;return;
+      let kind=Math.random()<.62?'clubSmash':'clubSweep';
+      if(kind==='clubSmash')effects.push({kind:'bossClub',owner:a,attackKind:'smash',t:1.28,max:1.28,windup:.70,active:.18,recovery:.40,resolved:false,impactFx:false});
+      else effects.push({kind:'bossClub',owner:a,attackKind:'sweep',t:1.18,max:1.18,windup:.54,active:.22,recovery:.42,resolved:false,impactFx:false});
+      a.cd=1.72;a.beastTimer=.46;return;
     }
   }
 }
 function resolveBossClub(e){
-  let a=e.owner;if(!a||!a.alive)return;let range=e.attackKind==='smash'?155:178,arc=e.attackKind==='smash'?.55:2.15;
+  let a=e.owner;if(!a||!a.alive)return;let range=e.attackKind==='smash'?160:182,arc=e.attackKind==='smash'?.58:2.18;
+  // 叩きつけは地面へ当たった位置に土煙・ヒビ・衝撃波を出す。
+  if(e.attackKind==='smash'&&!e.impactFx){
+    let ix=a.x+Math.cos(a.face)*132,iy=a.y+Math.sin(a.face)*132;
+    effects.push({kind:'trollImpact',x:ix,y:iy,a:a.face,t:.62,max:.62});
+    e.impactFx=true;
+  }
   for(let b of actors){if(!b.alive||b.team===a.team||b.invuln>0)continue;let d=dist(a,b),da=Math.abs(norm(angle(a,b)-a.face));if(d>range+b.r||da>arc/2)continue;
-    if(blocked(b,a,{weapon:'greatsword',knockback:84})){knockApart(a,b,8,74);b.stun=Math.max(b.stun,.24);continue}combatHit(b,a,{specialHit:e.attackKind==='smash'?'棍棒叩きつけ！':'棍棒薙ぎ！'});
+    if(blocked(b,a,{weapon:'greatsword',knockback:90})){knockApart(a,b,8,80);b.stun=Math.max(b.stun,.30);continue}combatHit(b,a,{specialHit:e.attackKind==='smash'?'棍棒叩きつけ！':'棍棒薙ぎ！'});
   }
 }
 function ai(a,dt){
@@ -917,8 +923,30 @@ function drawBeastBoss(a){
  }else if(a.beastKind==='bull'){
    x.scale(1.42,1.42);x.shadowBlur=12;x.shadowColor='#8fd9ef';x.fillStyle='#7a5a4b';x.beginPath();x.ellipse(0,2,31,24,0,0,Math.PI*2);x.fill();x.fillStyle='#efe2cc';x.beginPath();x.arc(0,-13,25,0,Math.PI*2);x.fill();x.strokeStyle='#f7f1dd';x.lineWidth=6;x.beginPath();x.moveTo(-15,-25);x.quadraticCurveTo(-34,-43,-43,-28);x.moveTo(15,-25);x.quadraticCurveTo(34,-43,43,-28);x.stroke();x.fillStyle='#2f3b3e';x.beginPath();x.arc(-8,-14,3,0,Math.PI*2);x.arc(8,-14,3,0,Math.PI*2);x.fill();x.fillStyle='#5d4338';x.fillRect(-24,20,48,36);
  }else{
-   x.scale(1.45,1.45);x.shadowBlur=10;x.shadowColor='#485c32';x.fillStyle='#788f50';x.beginPath();x.arc(0,-6,28,0,Math.PI*2);x.fill();x.fillStyle='#879d59';x.fillRect(-24,18,48,40);x.fillStyle='#e9ddbd';x.beginPath();x.arc(-9,-10,5,0,Math.PI*2);x.arc(9,-10,5,0,Math.PI*2);x.fill();x.fillStyle='#2a321f';x.beginPath();x.arc(-8,-10,2,0,Math.PI*2);x.arc(8,-10,2,0,Math.PI*2);x.fill();
-   x.save();x.rotate(a.face);x.strokeStyle='#6b472d';x.lineWidth=14;x.lineCap='round';x.beginPath();x.moveTo(15,0);x.lineTo(85,0);x.stroke();x.fillStyle='#8d623b';x.beginPath();x.arc(88,0,20,0,Math.PI*2);x.fill();x.restore();
+   // トロール：胴体だけでなく腕・脚を大きく描き、棍棒の予備動作を全身で見せる。
+   x.scale(1.45,1.45);x.shadowBlur=10;x.shadowColor='#485c32';
+   // 脚
+   x.strokeStyle='#667d43';x.lineWidth=16;x.lineCap='round';x.beginPath();x.moveTo(-14,42);x.lineTo(-20,70);x.moveTo(14,42);x.lineTo(20,70);x.stroke();
+   x.fillStyle='#4e5d36';x.beginPath();x.ellipse(-22,73,16,8,-.08,0,Math.PI*2);x.ellipse(22,73,16,8,.08,0,Math.PI*2);x.fill();
+   // 胴体と頭
+   x.fillStyle='#879d59';roundRect(-27,12,54,46,14);x.fill();x.fillStyle='#788f50';x.beginPath();x.arc(0,-8,30,0,Math.PI*2);x.fill();
+   x.fillStyle='#e9ddbd';x.beginPath();x.arc(-9,-12,5,0,Math.PI*2);x.arc(9,-12,5,0,Math.PI*2);x.fill();x.fillStyle='#2a321f';x.beginPath();x.arc(-8,-12,2,0,Math.PI*2);x.arc(8,-12,2,0,Math.PI*2);x.fill();
+   // 現在の棍棒攻撃エフェクトから姿勢を取得。
+   let ce=effects.find(e=>e.kind==='bossClub'&&e.owner===a&&(e.delay||0)<=0&&e.t>0),clubAng=0,armLift=0;
+   if(ce){let el=ce.max-ce.t;if(ce.attackKind==='smash'){
+     if(el<ce.windup){let q=el/ce.windup;clubAng=-1.55*q;armLift=q;}
+     else if(el<ce.windup+ce.active){let q=(el-ce.windup)/ce.active;clubAng=-1.55+2.65*q;armLift=1-q*.35;}
+     else{let q=(el-ce.windup-ce.active)/ce.recovery;clubAng=1.10*(1-q);armLift=.65*(1-q);}
+   }else{
+     if(el<ce.windup){let q=el/ce.windup;clubAng=-1.05*q;armLift=.45*q;}
+     else if(el<ce.windup+ce.active){let q=(el-ce.windup)/ce.active;clubAng=-1.05+2.10*q;armLift=.45;}
+     else{let q=(el-ce.windup-ce.active)/ce.recovery;clubAng=1.05*(1-q);armLift=.45*(1-q);}
+   }}
+   // 腕。棍棒を両手で持つ。
+   x.save();x.rotate(a.face);x.rotate(clubAng);
+   let sy=-10-armLift*18;
+   x.strokeStyle='#71884a';x.lineWidth=15;x.beginPath();x.moveTo(-18,8);x.lineTo(10,sy);x.moveTo(18,8);x.lineTo(24,sy);x.stroke();
+   x.fillStyle='#6b472d';x.fillRect(8,sy-6,76,12);x.fillStyle='#8d623b';x.beginPath();x.arc(88,sy,21,0,Math.PI*2);x.fill();x.restore();
  }
  x.shadowBlur=0;x.restore();
 }
@@ -1066,7 +1094,30 @@ function drawEffect(e){
  }else if(e.kind==='leaves'){
    let p=1-e.t/e.max;for(let i=0;i<12;i++){let a=e.seed+i*2.17,dx=Math.cos(a)*((18+i*5)*p),dy=(i%3-1)*9*p+34*p*p;x.globalAlpha=.75*(1-p);x.fillStyle=i%2?'#78a84d':'#4e7d3e';x.save();x.translate(e.x+dx,e.y+dy);x.rotate(a+p*4);x.beginPath();x.ellipse(0,0,5,2.5,.4,0,Math.PI*2);x.fill();x.restore()}x.globalAlpha=1;
  }else if(e.kind==='diveMark'){let p=1-e.t/e.max;x.globalAlpha=.55+Math.sin(p*18)*.2;x.strokeStyle='#ffdd72';x.lineWidth=5;x.beginPath();x.arc(e.x,e.y,38-p*12,0,Math.PI*2);x.stroke();x.beginPath();x.moveTo(e.x-24,e.y);x.lineTo(e.x+24,e.y);x.moveTo(e.x,e.y-24);x.lineTo(e.x,e.y+24);x.stroke();
- }else if(e.kind==='bossClub'){let a=e.owner;if(a&&a.alive){let elapsed=e.max-e.t,ph=elapsed<e.windup?'windup':elapsed<e.windup+e.active?'active':'recovery';x.globalAlpha=ph==='active'?.52:.18;x.strokeStyle='#e4b46c';x.shadowBlur=18;x.shadowColor='#e4b46c';x.lineWidth=16;x.beginPath();if(e.attackKind==='smash'){x.arc(a.x,a.y,150,a.face-.22,a.face+.22)}else{x.arc(a.x,a.y,176,a.face-1.05,a.face+1.05)}x.stroke();}
+ }else if(e.kind==='bossClub'){
+   let a=e.owner;if(a&&a.alive){let elapsed=e.max-e.t,ph=elapsed<e.windup?'windup':elapsed<e.windup+e.active?'active':'recovery',q=e.attackKind==='smash'?Math.min(1,elapsed/e.windup):Math.min(1,elapsed/e.windup);
+     // 棍棒そのものの太い残像。叩きつけは頭上から地面へ、薙ぎは横方向へ弧を描く。
+     if(ph==='active'||(ph==='windup'&&q>.55)){
+       x.shadowBlur=22;x.shadowColor='#f2c47a';x.strokeStyle='#f2c47a';x.lineCap='round';x.lineWidth=e.attackKind==='smash'?20:17;
+       x.globalAlpha=ph==='active'?.58:.18+q*.20;x.beginPath();
+       if(e.attackKind==='smash'){
+         let aa=a.face-1.55+Math.max(0,(elapsed-e.windup)/(e.active||.18))*2.65;
+         let bx=a.x+Math.cos(aa)*40,by=a.y+Math.sin(aa)*40,ex=a.x+Math.cos(aa)*142,ey=a.y+Math.sin(aa)*142;
+         x.moveTo(bx,by);x.lineTo(ex,ey);
+       }else{
+         x.arc(a.x,a.y,176,a.face-1.05,a.face+1.05);
+       }x.stroke();
+     }
+   }
+ }else if(e.kind==='trollImpact'){
+   let p=1-e.t/e.max;x.save();x.translate(e.x,e.y);x.rotate(e.a||0);
+   // 地面の衝撃波
+   x.globalAlpha=.62*(1-p);x.strokeStyle='#e6c47d';x.shadowBlur=14;x.shadowColor='#e6c47d';x.lineWidth=8;x.beginPath();x.ellipse(0,0,24+p*72,10+p*28,0,0,Math.PI*2);x.stroke();
+   // ヒビ
+   x.globalAlpha=.72*(1-p*.65);x.strokeStyle='#6a4c31';x.shadowBlur=0;x.lineWidth=4;for(let i=0;i<7;i++){let aa=-.9+i*.30,len=26+p*34;x.beginPath();x.moveTo(0,0);x.lineTo(Math.cos(aa)*len,Math.sin(aa)*len*.65);x.stroke()}
+   // 土煙
+   x.globalAlpha=.36*(1-p);x.fillStyle='#c9aa72';for(let i=0;i<8;i++){let aa=i*.83+(e.a||0),rr=18+p*(28+i*3);x.beginPath();x.arc(Math.cos(aa)*rr,Math.sin(aa)*rr*.55-10*p,8+8*p,0,Math.PI*2);x.fill()}
+   x.restore();
  }else if(e.kind==='beastStep'){let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max;x.globalAlpha=.35*(1-p);x.strokeStyle='#8de7ff';x.lineWidth=7;x.beginPath();x.arc(a.x,a.y,28+p*38,0,Math.PI*2);x.stroke();}
  }else if(e.kind==='steadfast'){let a=e.owner;if(a&&a.alive){x.globalAlpha=.24;x.strokeStyle='#d6b16b';x.lineWidth=9;x.beginPath();x.arc(a.x,a.y,52,0,Math.PI*2);x.stroke();}
  }else if(e.kind==='dashGuard'){
