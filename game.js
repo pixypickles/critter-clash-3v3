@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.52';
+const VERSION='v0.53';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -28,6 +28,7 @@ const SKILLS={
   gladiatorAdvance:{name:'闘士の進撃',owner:'sword'},
   phalanxDrive:{name:'ファランクス',owner:'spear'},
   dragonBreaker:{name:'竜断',owner:'greatsword'},
+  heavenFall:{name:'天墜斬',owner:'greatsword'},
   tripleThrust:{name:'三段刺突',owner:'rapier'},
   aegisRush:{name:'鉄壁突進',owner:'doubleShield'}
 };
@@ -278,6 +279,11 @@ function useSkill(a,slot='A'){
     let th={kind:'thrust',weapon:'spear',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:252,arc:.11,t:.70,max:.70,windup:.10,active:.14,recovery:.38,delay:.38,team:a.team,owner:a,resolved:false,parry:false,recoveryApplied:false,knockback:62,specialHit:'ファランクス！'};effects.push(th);a.attackPose=th;
   }else if(skill==='dragonBreaker'){
     a[cdKey]=6.6;a.cd=Math.max(a.cd,1.25);let sw={kind:'swing',weapon:'greatsword',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:180,arc:.72,t:1.10,max:1.10,windup:.48,active:.20,recovery:.42,delay:0,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,knockback:96,specialHit:'竜断！'};effects.push(sw);a.attackPose=sw;
+  }else if(skill==='heavenFall'){
+    // 天墜斬：大剣を正面→体側→背中側へ回し、その勢いで跳び、着地と同時に正面へ叩きつける。
+    a[cdKey]=7.2;a.cd=Math.max(a.cd,1.38);a.stun=Math.max(a.stun,.42);a.invuln=Math.max(a.invuln,.10);
+    effects.push({kind:'heavenFall',owner:a,t:1.28,max:1.28,windup:.46,air:.38,impact:.16,recovery:.28,resolved:false,range:184,shockRadius:82,knockback:104,team:a.team});
+    ui.status.textContent='天墜斬！ 大剣を背へ回して跳躍';
   }else if(skill==='tripleThrust'){
     a[cdKey]=5.7;a.cd=Math.max(a.cd,.92);for(let i=0;i<3;i++){let th={kind:'thrust',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:142+i*10,arc:.12,t:.32,max:.32,windup:.035,active:.10,recovery:.185,delay:i*.17,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:i===2?34:14,lungeApplied:false,knockback:i===2?28:8,specialHit:i===2?'三段刺突！':null,retarget:true,retargeted:false};effects.push(th);if(i===0)a.attackPose=th;}
   }else if(skill==='aegisRush'){
@@ -548,6 +554,22 @@ function combatHit(target,attacker,source){
   if(mode==='practice'){practiceHit(target,attacker,source);return}
   if(mode==='boss'&&target.boss){target.hp=Math.max(0,(target.hp||3)-1);target.invuln=Math.max(target.invuln,.55);target.stun=Math.max(target.stun,.34);knockApart(attacker,target,12,22);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});ui.score.textContent=`BOSS HP ${target.hp}/${target.maxHp||3}`;ui.status.textContent=`ボスにHIT！ 残り ${target.hp}`;if(target.hp<=0){target.alive=false;setTimeout(()=>finishBoss(true),450)}return}
   target.alive=false;effects.push({kind:'out',x:target.x,y:target.y,t:.55});if(!target.ai)transfer();
+}
+function resolveHeavenFall(e){
+  let a=e.owner;if(!a||!a.alive)return;
+  // 着地点は正面。直撃は大きく、剣先周辺の小さな円形衝撃波にも当たり判定を持たせる。
+  let ix=a.x+Math.cos(a.face)*Math.min(e.range||184,150),iy=a.y+Math.sin(a.face)*Math.min(e.range||184,150);
+  safePush(a,Math.cos(a.face)*28,Math.sin(a.face)*28);
+  effects.push({kind:'groundShock',x:ix,y:iy,t:.52,max:.52,r:e.shockRadius||82});
+  for(let b of actors){
+    if(!b.alive||b.team===a.team||b.invuln>0)continue;
+    let direct=pointSegDist(b.x,b.y,a.x,a.y,ix,iy)<=b.r+18;
+    let shock=Math.hypot(b.x-ix,b.y-iy)<= (e.shockRadius||82)+b.r;
+    if(!direct&&!shock)continue;
+    let src={weapon:'greatsword',skill:true,knockback:direct?(e.knockback||104):54,specialHit:direct?'天墜斬・直撃！':'天墜衝撃波！'};
+    if(blocked(b,a,src)){knockApart(a,b,10,direct?88:46);continue}
+    knockApart(a,b,10,direct?e.knockback||104:54);combatHit(b,a,src);
+  }
 }
 function resolveSpin(e){
   let a=e.owner;if(!a||!a.alive)return;
@@ -853,6 +875,9 @@ function update(dt){
     }else if(e.kind==='spinSkill'){
       let elapsed=e.max-e.t,ph=elapsed<e.windup?'windup':elapsed<e.windup+e.active?'active':'recovery';
       if(ph==='active'&&!e.resolved){resolveSpin(e);e.resolved=true}
+    }else if(e.kind==='heavenFall'){
+      let elapsed=e.max-e.t,impactAt=e.windup+e.air;
+      if(elapsed>=impactAt&&!e.resolved){resolveHeavenFall(e);e.resolved=true}
     }else if(e.kind==='subLog'){x.globalAlpha=e.t/e.max;x.fillStyle='#8b5a2b';x.fillRect(e.x-10,e.y-30,20,58);x.fillStyle='#5ea64e';x.beginPath();x.arc(e.x,e.y-32,23,0,Math.PI*2);x.fill();
  }else if(e.kind==='bossClub'){
       let elapsed=e.max-e.t,ph=elapsed<e.windup?'windup':elapsed<e.windup+e.active?'active':'recovery';if(ph==='active'&&!e.resolved){resolveBossClub(e);e.resolved=true}
@@ -951,7 +976,7 @@ const RIFT_BOSSES={
  kannu:{id:'kannu',name:'赤兎を駆る KANNU',type:'halberd',skill:'kannuSweep',reward:'kannuSweep',rewardName:'騎将偃月斬',hp:7,kind:'kannu',colors:['#276c5a','#b23a31','#e5c65d']},
  gladiator:{id:'gladiator',name:'闘技の守護者 グラディウス',type:'sword',skill:'gladiatorAdvance',reward:'gladiatorAdvance',rewardName:'闘士の進撃',hp:6,kind:'gladiator',colors:['#8f312c','#d6b36b','#f3e6c3']},
  leon:{id:'leon',name:'重装槍兵 レオン',type:'spear',skill:'phalanxDrive',reward:'phalanxDrive',rewardName:'ファランクス',hp:7,kind:'leon',colors:['#405a7b','#d7c27a','#e9edf2']},
- sieg:{id:'sieg',name:'竜狩り騎士 シグ',type:'greatsword',skill:'dragonBreaker',reward:'dragonBreaker',rewardName:'竜断',hp:8,kind:'sieg',colors:['#493f59','#b9a7c8','#d65b4d']},
+ sieg:{id:'sieg',name:'竜狩り騎士 ジーク',type:'greatsword',skill:'heavenFall',reward:'dragonBreaker',rewards:['dragonBreaker','heavenFall'],rewardName:'竜断／天墜斬',hp:8,kind:'sieg',colors:['#493f59','#b9a7c8','#d65b4d']},
  athos:{id:'athos',name:'決闘家 アトス',type:'rapier',skill:'tripleThrust',reward:'tripleThrust',rewardName:'三段刺突',hp:6,kind:'athos',colors:['#244d82','#d9e8f7','#b8954f']},
  aegis:{id:'aegis',name:'重装守護者 イージス',type:'doubleShield',skill:'aegisRush',reward:'aegisRush',rewardName:'鉄壁突進',hp:8,kind:'aegis',colors:['#4a535e','#d9e1e8','#8ea0b2']}
 };
@@ -963,7 +988,7 @@ function startBeastBoss(id){let unlocked=progress.beastUnlocked.filter(k=>BEAST_
 function openRiftMenu(){if(!progress.rankChampions.includes('legend')){ui.status.textContent='RANK S大会で優勝すると時空の歪みが安定します';return}let list=q('#rankList');q('#tournamentTitle').textContent='時空の歪み';q('#tournamentMessage').textContent='時間・伝説・物語を越えて現れた「時の武人」を選んでください。撃破すると、その武器の奥義を修得できます。';list.innerHTML=Object.values(RIFT_BOSSES).map(b=>`<button class="rankBtn" data-rift="${b.id}"><b>${b.name}</b><small>${progress.riftDefeated.includes(b.id)?'撃破済み・再戦可能':'奥義未修得'}｜BOSS HP ${b.hp}</small></button>`).join('');q('#tournamentStandings').innerHTML='<p class="note">時空決闘：壁・拠点なし。伝説をモチーフにした時の武人との戦いです。</p>';list.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{q('#tournament').classList.add('hidden');startRiftBoss(btn.dataset.rift)});q('#tournament').classList.remove('hidden');mode='menu';syncModeButtons()}
 function startRiftBoss(id){let b=RIFT_BOSSES[id]||RIFT_BOSSES.musashi;beginBoss(b,{source:'rift',rift:id})}
 function restartBossBattle(){if(!bossBattle)return;if(bossBattle.source==='dojo')startDojoBoss(bossBattle.dojo);else if(bossBattle.source==='beast'){let b=BEAST_BOSSES[bossBattle.beast];beginBoss(b,{source:'beast',beast:bossBattle.beast,replay:bossBattle.replay});}else if(bossBattle.source==='rift'){startRiftBoss(bossBattle.rift)}else startBoss()}
-function finishBoss(won){if(!bossBattle)return;roundOver=1;let b=bossBattle.boss;if(won){if(bossBattle.source==='rift'){let id=bossBattle.rift;if(!progress.riftDefeated.includes(id))progress.riftDefeated.push(id);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='時の武人に勝利！';ui.rr.textContent=`奥義「${b.rewardName}」を修得！ 時空の歪みでは何度でも再戦できます。`}else if(bossBattle.source==='dojo'){let kind=bossBattle.dojo;if(!progress.dojoDefeated.includes(kind))progress.dojoDefeated.push(kind);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='道場制覇！';ui.rr.textContent=`専用奥義「${b.rewardName}」を修得！ ホームで対象武器に装備できます。`}else if(bossBattle.source==='beast'){let id=bossBattle.beast;if(!progress.beastDefeated.includes(id))progress.beastDefeated.push(id);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent=bossBattle.replay?'魔獣再撃破！':'魔獣撃破！';ui.rr.textContent=bossBattle.replay?'魔獣の森では撃破済みの魔獣とも何度でも再戦できます。':(b.reward?`魔獣から新スキル「${b.rewardName}」を会得！ 全武器で装備できます。`:(id==='bull'?(progress.unlockedSkills.includes('rapierCounter')?'猛牛の突進を見切った経験が残った。':'白角の猛牛を撃破。レイピアで突進をパリィすると何かを掴めそうだ。'):(progress.unlockedSkills.includes('katanaCounter')?'翼竜の急降下を受け流した経験が残った。':'蒼翼の急降下を刀で受け流すと何かを掴めそうだ。')))}else{let idx=bossBattle.index;if(!progress.defeatedBosses.includes(idx))progress.defeatedBosses.push(idx);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);if(idx===3&&!progress.defeatedBosses.includes(4)){progress.pendingBoss=4}else{progress.pendingBoss=null}saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='強敵撃破！';ui.rr.textContent=b.reward?`新スキル「${b.rewardName}」を獲得！ ホームで対応武器に装備できます。`:(idx===3?`${b.name}を撃破！ 修練の地に「疾影の忍 SASUKE」が現れました。`:`${b.name}を撃破しました。`)}}else{ui.rt.textContent='修練失敗';ui.rr.textContent='強敵はその場に残っています。編成を整えて再挑戦できます。'}q('#rematch').textContent=won?'フィールドへ':'再挑戦';q('#fieldBack').textContent='フィールドへ';ui.result.classList.remove('hidden');bossBattle.resultWon=won}
+function finishBoss(won){if(!bossBattle)return;roundOver=1;let b=bossBattle.boss;if(won){if(bossBattle.source==='rift'){let id=bossBattle.rift;if(!progress.riftDefeated.includes(id))progress.riftDefeated.push(id);for(let sk of (b.rewards||[b.reward]).filter(Boolean))if(!progress.unlockedSkills.includes(sk))progress.unlockedSkills.push(sk);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='時の武人に勝利！';ui.rr.textContent=`奥義「${b.rewardName}」を修得！ 時空の歪みでは何度でも再戦できます。`}else if(bossBattle.source==='dojo'){let kind=bossBattle.dojo;if(!progress.dojoDefeated.includes(kind))progress.dojoDefeated.push(kind);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='道場制覇！';ui.rr.textContent=`専用奥義「${b.rewardName}」を修得！ ホームで対象武器に装備できます。`}else if(bossBattle.source==='beast'){let id=bossBattle.beast;if(!progress.beastDefeated.includes(id))progress.beastDefeated.push(id);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent=bossBattle.replay?'魔獣再撃破！':'魔獣撃破！';ui.rr.textContent=bossBattle.replay?'魔獣の森では撃破済みの魔獣とも何度でも再戦できます。':(b.reward?`魔獣から新スキル「${b.rewardName}」を会得！ 全武器で装備できます。`:(id==='bull'?(progress.unlockedSkills.includes('rapierCounter')?'猛牛の突進を見切った経験が残った。':'白角の猛牛を撃破。レイピアで突進をパリィすると何かを掴めそうだ。'):(progress.unlockedSkills.includes('katanaCounter')?'翼竜の急降下を受け流した経験が残った。':'蒼翼の急降下を刀で受け流すと何かを掴めそうだ。')))}else{let idx=bossBattle.index;if(!progress.defeatedBosses.includes(idx))progress.defeatedBosses.push(idx);if(b.reward&&!progress.unlockedSkills.includes(b.reward))progress.unlockedSkills.push(b.reward);if(idx===3&&!progress.defeatedBosses.includes(4)){progress.pendingBoss=4}else{progress.pendingBoss=null}saveProgress();buildSlots(ui.homeSlots,true);ui.rt.textContent='強敵撃破！';ui.rr.textContent=b.reward?`新スキル「${b.rewardName}」を獲得！ ホームで対応武器に装備できます。`:(idx===3?`${b.name}を撃破！ 修練の地に「疾影の忍 SASUKE」が現れました。`:`${b.name}を撃破しました。`)}}else{ui.rt.textContent='修練失敗';ui.rr.textContent='強敵はその場に残っています。編成を整えて再挑戦できます。'}q('#rematch').textContent=won?'フィールドへ':'再挑戦';q('#fieldBack').textContent='フィールドへ';ui.result.classList.remove('hidden');bossBattle.resultWon=won}
 function leaveBoss(){bossBattle=null;ui.result.classList.add('hidden');mode='field';actors=[];effects=[];ui.mode.textContent='FIELD';ui.score.textContent='0 - 0';ui.status.textContent='修練から戻りました';syncModeButtons()}
 
 function draw(){x.clearRect(0,0,W,H);if(mode==='field')drawField();else drawMatch()}
@@ -1193,6 +1218,12 @@ function drawEffect(e){
      x.globalAlpha=.82;x.strokeStyle='#fff';x.shadowBlur=8;x.lineWidth=e.weapon==='greatsword'?4:3;
      x.beginPath();x.moveTo(a.x+Math.cos(ang)*(inner+6),a.y+Math.sin(ang)*(inner+6));x.lineTo(a.x+Math.cos(ang)*(rr-5),a.y+Math.sin(ang)*(rr-5));x.stroke();
    }
+ }else if(e.kind==='heavenFall'){
+   let a=e.owner;if(a&&a.alive){let elapsed=e.max-e.t,col=weaponColor('greatsword'),w=e.windup||.46,air=e.air||.38;x.save();x.translate(a.x,a.y);x.shadowColor=col;x.shadowBlur=24;x.strokeStyle=col;x.lineCap='round';
+     if(elapsed<w){let q=elapsed/w,aa=a.face+q*Math.PI*1.15;x.globalAlpha=.35+.45*q;x.lineWidth=18;x.beginPath();x.arc(0,0,92,a.face-.15,aa);x.stroke();x.globalAlpha=.95;x.lineWidth=20;x.beginPath();x.moveTo(Math.cos(aa)*48,Math.sin(aa)*48);x.lineTo(Math.cos(aa)*138,Math.sin(aa)*138);x.stroke();}
+     else if(elapsed<w+air){let q=(elapsed-w)/air,aa=a.face+Math.PI*(1.15-.95*q);x.globalAlpha=.9;x.lineWidth=20;x.beginPath();x.moveTo(Math.cos(aa)*48,Math.sin(aa)*48-18*Math.sin(q*Math.PI));x.lineTo(Math.cos(aa)*145,Math.sin(aa)*145-30*Math.sin(q*Math.PI));x.stroke();x.globalAlpha=.28;x.fillStyle='#fff';x.beginPath();x.ellipse(0,18,42+q*12,14+q*5,0,0,Math.PI*2);x.fill();}
+     x.restore();}
+ }else if(e.kind==='groundShock'){let p=1-e.t/e.max;x.globalAlpha=.70*(1-p);x.strokeStyle=weaponColor('greatsword');x.shadowColor=weaponColor('greatsword');x.shadowBlur=24;x.lineWidth=12-5*p;x.beginPath();x.arc(e.x,e.y,18+(e.r||82)*p,0,Math.PI*2);x.stroke();x.globalAlpha=.35*(1-p);x.lineWidth=4;x.beginPath();x.arc(e.x,e.y,8+(e.r||82)*.65*p,0,Math.PI*2);x.stroke();
  }else if(e.kind==='leaves'){
    let p=1-e.t/e.max;for(let i=0;i<12;i++){let a=e.seed+i*2.17,dx=Math.cos(a)*((18+i*5)*p),dy=(i%3-1)*9*p+34*p*p;x.globalAlpha=.75*(1-p);x.fillStyle=i%2?'#78a84d':'#4e7d3e';x.save();x.translate(e.x+dx,e.y+dy);x.rotate(a+p*4);x.beginPath();x.ellipse(0,0,5,2.5,.4,0,Math.PI*2);x.fill();x.restore()}x.globalAlpha=1;
  }else if(e.kind==='diveMark'){let p=1-e.t/e.max;x.globalAlpha=.55+Math.sin(p*18)*.2;x.strokeStyle='#ffdd72';x.lineWidth=5;x.beginPath();x.arc(e.x,e.y,38-p*12,0,Math.PI*2);x.stroke();x.beginPath();x.moveTo(e.x-24,e.y);x.lineTo(e.x+24,e.y);x.moveTo(e.x,e.y-24);x.lineTo(e.x,e.y+24);x.stroke();
