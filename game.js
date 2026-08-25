@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.56';
+const VERSION='v0.57';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -281,10 +281,10 @@ function useSkill(a,slot='A'){
   }else if(skill==='dragonBreaker'){
     a[cdKey]=6.6;a.cd=Math.max(a.cd,1.25);let sw={kind:'swing',weapon:'greatsword',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:180,arc:.72,t:1.10,max:1.10,windup:.48,active:.20,recovery:.42,delay:0,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,knockback:96,specialHit:'竜断！'};effects.push(sw);a.attackPose=sw;
   }else if(skill==='heavenFall'){
-    // 天墜斬：大剣を正面→体側→背中側へ回し、その勢いで跳び、着地と同時に正面へ叩きつける。
-    a[cdKey]=7.2;a.cd=Math.max(a.cd,1.38);a.stun=Math.max(a.stun,.42);a.invuln=Math.max(a.invuln,.10);
-    effects.push({kind:'heavenFall',owner:a,t:1.28,max:1.28,windup:.46,air:.38,impact:.16,recovery:.28,resolved:false,range:184,shockRadius:82,knockback:104,team:a.team});
-    ui.status.textContent='天墜斬！ 大剣を背へ回して跳躍';
+    // 天墜斬：余計な横振りをやめ、跳躍して着地の瞬間に正面へ縦一文字に叩き下ろす。
+    a[cdKey]=7.2;a.cd=Math.max(a.cd,1.30);a.stun=Math.max(a.stun,.34);a.invuln=Math.max(a.invuln,.10);
+    effects.push({kind:'heavenFall',owner:a,t:1.20,max:1.20,windup:.22,air:.50,impact:.16,recovery:.32,resolved:false,range:184,shockRadius:82,knockback:104,team:a.team});
+    ui.status.textContent='天墜斬！ 跳躍から着地と同時に縦斬り';
   }else if(skill==='tripleThrust'){
     a[cdKey]=5.7;a.cd=Math.max(a.cd,.92);for(let i=0;i<3;i++){let th={kind:'thrust',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:142+i*10,arc:.12,t:.32,max:.32,windup:.035,active:.10,recovery:.185,delay:i*.17,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:i===2?34:14,lungeApplied:false,knockback:i===2?28:8,specialHit:i===2?'三段刺突！':null,retarget:true,retargeted:false};effects.push(th);if(i===0)a.attackPose=th;}
   }else if(skill==='aegisRush'){
@@ -1259,9 +1259,11 @@ function drawEffect(e){
      x.beginPath();x.moveTo(a.x+Math.cos(ang)*(inner+6),a.y+Math.sin(ang)*(inner+6));x.lineTo(a.x+Math.cos(ang)*(rr-5),a.y+Math.sin(ang)*(rr-5));x.stroke();
    }
  }else if(e.kind==='heavenFall'){
-   let a=e.owner;if(a&&a.alive){let elapsed=e.max-e.t,col=weaponColor('greatsword'),w=e.windup||.46,air=e.air||.38;x.save();x.translate(a.x,a.y);x.shadowColor=col;x.shadowBlur=24;x.strokeStyle=col;x.lineCap='round';
-     if(elapsed<w){let q=elapsed/w,aa=a.face+q*Math.PI*1.15;x.globalAlpha=.35+.45*q;x.lineWidth=18;x.beginPath();x.arc(0,0,92,a.face-.15,aa);x.stroke();x.globalAlpha=.95;x.lineWidth=20;x.beginPath();x.moveTo(Math.cos(aa)*48,Math.sin(aa)*48);x.lineTo(Math.cos(aa)*138,Math.sin(aa)*138);x.stroke();}
-     else if(elapsed<w+air){let q=(elapsed-w)/air,aa=a.face+Math.PI*(1.15-.95*q);x.globalAlpha=.9;x.lineWidth=20;x.beginPath();x.moveTo(Math.cos(aa)*48,Math.sin(aa)*48-18*Math.sin(q*Math.PI));x.lineTo(Math.cos(aa)*145,Math.sin(aa)*145-30*Math.sin(q*Math.PI));x.stroke();x.globalAlpha=.28;x.fillStyle='#fff';x.beginPath();x.ellipse(0,18,42+q*12,14+q*5,0,0,Math.PI*2);x.fill();}
+   let a=e.owner;if(a&&a.alive){let elapsed=e.max-e.t,col=weaponColor('greatsword'),w=e.windup||.22,air=e.air||.50,impact=e.impact||.16;x.save();x.translate(a.x,a.y);x.rotate(a.face);x.shadowColor=col;x.shadowBlur=25;x.strokeStyle=col;x.lineCap='round';
+     // 見下ろしでも「ジャンプ→縦斬り」が読めるよう、剣は進行軸に沿わせて頭上へ引き上げる。
+     if(elapsed<w){let q=elapsed/w;x.globalAlpha=.9;x.lineWidth=20;x.beginPath();x.moveTo(28,-18*q);x.lineTo(118,-58*q);x.stroke();}
+     else if(elapsed<w+air){let q=(elapsed-w)/air,j=Math.sin(q*Math.PI);x.globalAlpha=.24;x.fillStyle='#fff';x.beginPath();x.ellipse(0,22,38+10*j,12+4*j,0,0,Math.PI*2);x.fill();x.globalAlpha=.95;x.lineWidth=20;x.beginPath();x.moveTo(24,-34-28*j);x.lineTo(132,-78-46*j);x.stroke();}
+     else {let q=Math.min(1,(elapsed-w-air)/impact);x.globalAlpha=.35*(1-q);x.lineWidth=34;x.beginPath();x.moveTo(22,-72+58*q);x.lineTo(150,-96+96*q);x.stroke();x.globalAlpha=.98;x.lineWidth=21;x.beginPath();x.moveTo(24,-34+34*q);x.lineTo(150,-70+70*q);x.stroke();}
      x.restore();}
  }else if(e.kind==='groundShock'){let p=1-e.t/e.max;x.globalAlpha=.70*(1-p);x.strokeStyle=weaponColor('greatsword');x.shadowColor=weaponColor('greatsword');x.shadowBlur=24;x.lineWidth=12-5*p;x.beginPath();x.arc(e.x,e.y,18+(e.r||82)*p,0,Math.PI*2);x.stroke();x.globalAlpha=.35*(1-p);x.lineWidth=4;x.beginPath();x.arc(e.x,e.y,8+(e.r||82)*.65*p,0,Math.PI*2);x.stroke();
  }else if(e.kind==='leaves'){
