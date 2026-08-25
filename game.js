@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.53';
+const VERSION='v0.54';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -22,7 +22,8 @@ const SKILLS={
   steadfast:{name:'不動',owner:'all'},
   nitenRush:{name:'二天連舞',owner:'katana'},
   substitution:{name:'変わり身の術',owner:'dagger'},
-  shadowRush:{name:'影走り',owner:'dagger'},
+  shadowRush:{name:'ミラージュ・ランジ',owner:'rapier'},
+  eightShadows:{name:'八影分身',owner:'dagger'},
   tsubameGaeshi:{name:'燕返し',owner:'katana'},
   kannuSweep:{name:'騎将偃月斬',owner:'halberd'},
   gladiatorAdvance:{name:'闘士の進撃',owner:'sword'},
@@ -124,7 +125,7 @@ q('#start').onclick=()=>{ui.setup.classList.add('hidden');startMatch()};q('#back
 function unit(team,i,type,skillId=null,skillIdB='none'){
   // 壁から十分離した固定スポーン。開始直後に壁へ埋まらないよう3レーン中央へ配置。
   const ys=[155,360,565], bx=team===0?155:1125;
-  return {team,i,type,skillId:skillId||TYPES[type].defaultSkill,skillIdB:skillIdB||'none',tactic:team?((enemyTeam?.tactics||[])[i]||'balanced'):(formationTactics[i]||'balanced'),x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,greatswordGuard:false,greatswordGuardA:0,steadfastT:0,beastKind:null,beastState:'',beastTimer:0,ai:team===1||i>0,species:team?(i%3):(i===0?'snowFox':i===1?'frog':'rabbit'),counterT:0,counterCharges:0,shadowRushReady:false,shadowRushT:0,shadowRushTarget:null,parryT:0,parryCd:0,parryKind:null,handAnimL:0,handAnimR:0,attackPose:null,skillCd:0,skillCdB:0,invuln:0,stepT:0,stepVX:0,stepVY:0,stepCd:0,spearAdvanceT:0,spearAdvanceVX:0,spearAdvanceVY:0}
+  return {team,i,type,skillId:skillId||TYPES[type].defaultSkill,skillIdB:skillIdB||'none',tactic:team?((enemyTeam?.tactics||[])[i]||'balanced'):(formationTactics[i]||'balanced'),x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,greatswordGuard:false,greatswordGuardA:0,steadfastT:0,beastKind:null,beastState:'',beastTimer:0,ai:team===1||i>0,species:team?(i%3):(i===0?'snowFox':i===1?'frog':'rabbit'),counterT:0,counterCharges:0,shadowRushReady:false,shadowRushT:0,shadowRushTarget:null,isHanzoClone:false,cloneBoss:null,parryT:0,parryCd:0,parryKind:null,handAnimL:0,handAnimR:0,attackPose:null,skillCd:0,skillCdB:0,invuln:0,stepT:0,stepVX:0,stepVY:0,stepCd:0,spearAdvanceT:0,spearAdvanceVX:0,spearAdvanceVY:0}
 }
 function resetRound(){actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));(enemyTeam?.formation||['sword','spear','dagger']).forEach((t,i)=>actors.push(unit(1,i,t,(enemyTeam?.skillsA||[])[i]||null,(enemyTeam?.skillsB||[])[i]||'none')));roundOver=0;effects=[];syncButtons()}
 function pickEnemyTeam(){let pool=ENEMY_TEAMS.filter(t=>t.rank<=progress.unlocked);enemyTeam=pool[Math.floor(Math.random()*pool.length)]}
@@ -289,10 +290,19 @@ function useSkill(a,slot='A'){
   }else if(skill==='aegisRush'){
     a[cdKey]=6.4;a.shield=true;a.steadfastT=1.25;a.skillCharge=.68;a.skillChargeVX=Math.cos(a.face)*410;a.skillChargeVY=Math.sin(a.face)*410;a.cd=Math.max(a.cd,.86);effects.push({kind:'shieldCharge',owner:a,t:.68,max:.68,knockback:92,specialHit:'鉄壁突進！'});setTimeout(()=>{if(a)a.shield=false},760);
   }else if(skill==='shadowRush'){
-    // 影走り：幻影を先行させて長距離で詰める。幻影へ攻撃されると背後から時間差反撃。
+    // ミラージュ・ランジ：レイピアの幻影を先行させ、幻影を斬らせると背後から時間差反撃。
     a[cdKey]=5.5;a.shadowRushReady=true;a.shadowRushT=.62;a.shadowRushTarget=e||null;a.cd=Math.max(a.cd,.20);
     const ox=a.x,oy=a.y;a.spearAdvanceT=.46;a.spearAdvanceVX=Math.cos(a.face)*470;a.spearAdvanceVY=Math.sin(a.face)*470;
-    effects.push({kind:'shadowRush',owner:a,x:ox,y:oy,a:a.face,t:.70,max:.70});ui.status.textContent='影走り：幻影が先行！';
+    effects.push({kind:'shadowRush',owner:a,x:ox,y:oy,a:a.face,t:.70,max:.70});ui.status.textContent='ミラージュ・ランジ：幻影が先行！';
+  }else if(skill==='eightShadows'){
+    a[cdKey]=6.4;a.cd=Math.max(a.cd,.55);a.invuln=Math.max(a.invuln,.32);
+    if(a.boss&&a.bossKind==='hanzo'){
+      spawnHanzoClones(a,true);ui.status.textContent='HANZO：八影分身！ 本物は1体だけ';
+    }else{
+      let e2=nearestEnemy(a);effects.push({kind:'eightShadows',owner:a,t:.72,max:.72});
+      if(e2){let aa=angle(a,e2),side=Math.random()<.5?-1:1;safePush(a,Math.cos(aa+side*Math.PI/2)*68,Math.sin(aa+side*Math.PI/2)*68);a.face=angle(a,e2);let sw={kind:'swing',weapon:'daggerAttack',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:124,arc:1.05,t:.42,max:.42,windup:.06,active:.14,recovery:.22,delay:.20,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:48,lungeApplied:false,knockback:18,specialHit:'八影斬り！'};effects.push(sw);a.attackPose=sw;}
+      ui.status.textContent='八影分身！ 幻影に紛れて斬り込む';
+    }
   }else if(skill==='beastStep'){
     // 翼竜由来の汎用技。スキル枠に見合う高性能回避へ強化。
     a[cdKey]=2.8;a.invuln=Math.max(a.invuln,.32);a.stepCd=Math.max(a.stepCd,.26);
@@ -492,14 +502,14 @@ function resolveAttack(e){
 }
 function blocked(def,atk,source=null){
   let ok=false;
-  if(def.shadowRushReady&&def.type==='dagger'){
+  if(def.shadowRushReady&&def.type==='rapier'){
     // 幻影を斬った相手の背後へ抜け、わずかな時間差で本体が斬り返す。
     def.shadowRushReady=false;def.shadowRushT=0;def.shadowRushTarget=null;def.spearAdvanceT=0;def.invuln=Math.max(def.invuln,.38);atk.stun=Math.max(atk.stun,.16);
     const ox=def.x,oy=def.y;effects.push({kind:'shadowPop',x:ox,y:oy,t:.62,max:.62});
     const backX=atk.x-Math.cos(atk.face||angle(atk,def))*94,backY=atk.y-Math.sin(atk.face||angle(atk,def))*94;
     safePush(def,backX-def.x,backY-def.y);def.face=angle(def,atk);
-    let cut={kind:'swing',weapon:'daggerAttack',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:132,arc:1.00,t:.48,max:.48,windup:.045,active:.14,recovery:.295,delay:.18,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:82,lungeApplied:false,knockback:24,specialHit:'影走り・背後斬り！'};
-    effects.push(cut);def.attackPose=cut;def.cd=Math.max(def.cd,.52);effects.push({kind:'skillHit',x:ox,y:oy-34,text:'幻影！',t:.68,max:.68});ui.status.textContent='影を斬らせた！ 背後から時間差反撃';return true;
+    let cut={kind:'swing',weapon:'rapier',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:158,arc:.18,t:.48,max:.48,windup:.045,active:.14,recovery:.295,delay:.18,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:82,lungeApplied:false,knockback:24,specialHit:'ミラージュ・ランジ！'};
+    effects.push(cut);def.attackPose=cut;def.cd=Math.max(def.cd,.52);effects.push({kind:'skillHit',x:ox,y:oy-34,text:'幻影！',t:.68,max:.68});ui.status.textContent='幻影を斬らせた！ 背後から時間差のレイピア反撃';return true;
   }
   if(def.parryT>0){
     // 通常の受け流し／パリィは成功時に明確な有利を作る。
@@ -550,9 +560,10 @@ function blocked(def,atk,source=null){
 }
 
 function combatHit(target,attacker,source){
+  if(target.isHanzoClone){target.alive=false;effects.push({kind:'shadowPop',x:target.x,y:target.y,t:.62,max:.62});ui.status.textContent='ハズレ！ 分身だった';let b=target.cloneBoss;if(b&&b.alive)setTimeout(()=>{if(mode==='boss'&&b.alive)spawnHanzoClones(b,false)},360);return}
   if(source&&source.specialHit){effects.push({kind:'skillHit',x:target.x,y:target.y,text:source.specialHit,t:.68,max:.68});ui.status.textContent=source.specialHit;}
   if(mode==='practice'){practiceHit(target,attacker,source);return}
-  if(mode==='boss'&&target.boss){target.hp=Math.max(0,(target.hp||3)-1);target.invuln=Math.max(target.invuln,.55);target.stun=Math.max(target.stun,.34);knockApart(attacker,target,12,22);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});ui.score.textContent=`BOSS HP ${target.hp}/${target.maxHp||3}`;ui.status.textContent=`ボスにHIT！ 残り ${target.hp}`;if(target.hp<=0){target.alive=false;setTimeout(()=>finishBoss(true),450)}return}
+  if(mode==='boss'&&target.boss){let wasHanzo=target.bossKind==='hanzo';target.hp=Math.max(0,(target.hp||3)-1);target.invuln=Math.max(target.invuln,.55);target.stun=Math.max(target.stun,.34);knockApart(attacker,target,12,22);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});ui.score.textContent=`BOSS HP ${target.hp}/${target.maxHp||3}`;ui.status.textContent=wasHanzo?`本物だ！ HANZO 残り ${target.hp}`:`ボスにHIT！ 残り ${target.hp}`;if(wasHanzo&&target.hp>0)spawnHanzoClones(target,true);if(target.hp<=0){target.alive=false;setTimeout(()=>finishBoss(true),450)}return}
   target.alive=false;effects.push({kind:'out',x:target.x,y:target.y,t:.55});if(!target.ai)transfer();
 }
 function resolveHeavenFall(e){
@@ -707,11 +718,20 @@ function resolveBossClub(e){
     if(blocked(b,a,{weapon:'greatsword',knockback:90})){knockApart(a,b,8,80);b.stun=Math.max(b.stun,.30);continue}combatHit(b,a,{specialHit:e.attackKind==='smash'?'棍棒叩きつけ！':'棍棒薙ぎ！'});
   }
 }
+function spawnHanzoClones(boss,shuffle=false){
+  if(!boss||!boss.alive)return;
+  actors=actors.filter(a=>!a.isHanzoClone);
+  const spots=[];for(let i=0;i<8;i++){let aa=i*Math.PI/4+Math.random()*.20,rr=105+Math.random()*55;spots.push({x:Math.max(court.x+70,Math.min(court.x+court.w-70,boss.x+Math.cos(aa)*rr)),y:Math.max(court.y+70,Math.min(court.y+court.h-70,boss.y+Math.sin(aa)*rr))})}
+  if(shuffle){let real=spots.splice(Math.floor(Math.random()*spots.length),1)[0];boss.x=real.x;boss.y=real.y;boss.invuln=Math.max(boss.invuln,.22)}
+  for(let i=0;i<7;i++){let c=unit(1,10+i,'dagger','none');c.x=spots[i].x;c.y=spots[i].y;c.ai=true;c.isHanzoClone=true;c.cloneBoss=boss;c.bossKind='hanzoClone';c.species=boss.species;c.furOverride=boss.furOverride;c.r=boss.r;c.tactic='flank';actors.push(c)}
+  effects.push({kind:'eightShadows',owner:boss,t:.85,max:.85});
+}
 function ai(a,dt){
+  if(a.isHanzoClone){let e=nearestEnemy(a);if(e){a.face=angle(a,e);let d=dist(a,e);if(d>120)move(a,Math.cos(a.face)*.32,Math.sin(a.face)*.32,dt);else{let side=(a.i%2?1:-1);move(a,Math.cos(a.face+side*Math.PI/2)*.20,Math.sin(a.face+side*Math.PI/2)*.20,dt)}}return}
   if(a.beastKind){beastAI(a,dt);return}
   if(a.boss&&a.bossKind==='musashi'){a.type='katana';if(a.cd<=0&&a.skillCd<=0&&Math.random()<.020)useSkill(a,'A')}
   if(a.boss&&a.bossKind==='sasuke'){a.type='dagger';if(a.cd<=0&&a.skillCd<=0&&Math.random()<.018)useSkill(a,'A');else if(a.cd<=0&&Math.random()<.030){attack(a,'daggerAttack')}}
-  if(a.boss&&a.bossKind==='hanzo'){a.type='dagger';if(a.cd<=0&&a.skillCd<=0&&Math.random()<.026)useSkill(a,'A');else if(a.cd<=0&&Math.random()<.022){attack(a,'daggerAttack')}}
+  if(a.boss&&a.bossKind==='hanzo'){a.type='dagger';if(!actors.some(z=>z.isHanzoClone&&z.alive))spawnHanzoClones(a,true);if(a.cd<=0&&a.skillCd<=0&&Math.random()<.018)useSkill(a,'A');else if(a.cd<=0&&Math.random()<.018){attack(a,'daggerAttack')}}
   if(a.boss&&a.bossKind==='kojiro'){a.type='katana';if(a.cd<=0&&a.skillCd<=0&&Math.random()<.024)useSkill(a,'A')}
   if(a.boss&&a.bossKind==='kannu'){a.type='halberd';if(a.cd<=0&&a.skillCd<=0&&Math.random()<.022)useSkill(a,'A')}
   const es=actors.filter(b=>b.alive&&b.team!==a.team);
@@ -849,7 +869,7 @@ function update(dt){
   }
   if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||roundOver)return;
   for(let a of actors){
-    if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.steadfastT=Math.max(0,(a.steadfastT||0)-dt);a.aiClock=(a.aiClock||0)+dt;a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.skillCdB=Math.max(0,(a.skillCdB||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);if(a.counterT<=0){a.counterCharges=0;a.substitutionReady=false;}if(a.shadowRushT>0){a.shadowRushT=Math.max(0,a.shadowRushT-dt);if(a.shadowRushT<=0&&a.shadowRushReady){a.shadowRushReady=false;a.spearAdvanceT=0;let e2=a.shadowRushTarget&&a.shadowRushTarget.alive?a.shadowRushTarget:nearestEnemy(a);a.shadowRushTarget=null;if(e2)a.face=angle(a,e2);let cut={kind:'swing',weapon:'daggerAttack',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:128,arc:1.02,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.01,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:54,lungeApplied:false,knockback:18,specialHit:'影走り！'};effects.push(cut);a.attackPose=cut;a.cd=Math.max(a.cd,.42);}}a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0)ai(a,dt)
+    if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.steadfastT=Math.max(0,(a.steadfastT||0)-dt);a.aiClock=(a.aiClock||0)+dt;a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.skillCdB=Math.max(0,(a.skillCdB||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);if(a.counterT<=0){a.counterCharges=0;a.substitutionReady=false;}if(a.shadowRushT>0){a.shadowRushT=Math.max(0,a.shadowRushT-dt);if(a.shadowRushT<=0&&a.shadowRushReady){a.shadowRushReady=false;a.spearAdvanceT=0;let e2=a.shadowRushTarget&&a.shadowRushTarget.alive?a.shadowRushTarget:nearestEnemy(a);a.shadowRushTarget=null;if(e2)a.face=angle(a,e2);let cut={kind:'swing',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:154,arc:.16,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.01,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:54,lungeApplied:false,knockback:18,specialHit:'ミラージュ・ランジ！'};effects.push(cut);a.attackPose=cut;a.cd=Math.max(a.cd,.42);}}a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0)ai(a,dt)
   }
   let p=controlled();if(p&&p.stun<=0&&p.stepT<=0)move(p,vx,vy,dt);
   separateActors();
@@ -971,16 +991,17 @@ const DOJO_BOSSES={
 const RIFT_BOSSES={
  musashi:{id:'musashi',name:'時の剣豪 MUSASHI',type:'katana',skill:'nitenRush',reward:'nitenRush',rewardName:'二天連舞',hp:6,kind:'musashi',colors:['#202a46','#e7e1cf','#5ba7d9']},
  sasuke:{id:'sasuke',name:'時の忍 SASUKE',type:'dagger',skill:'substitution',reward:'substitution',rewardName:'変わり身の術',hp:5,kind:'sasuke',colors:['#232735','#6f7c92','#b8d8e8']},
- hanzo:{id:'hanzo',name:'影の忍 HANZO',type:'dagger',skill:'shadowRush',reward:'shadowRush',rewardName:'影走り',hp:6,kind:'hanzo',colors:['#17202b','#3d556d','#7ad5e8']},
+ hanzo:{id:'hanzo',name:'八影の忍 HANZO',type:'dagger',skill:'eightShadows',reward:'eightShadows',rewardName:'八影分身',hp:5,kind:'hanzo',colors:['#17202b','#3d556d','#7ad5e8']},
  kojiro:{id:'kojiro',name:'長刀の剣士 KOJIRO',type:'katana',skill:'tsubameGaeshi',reward:'tsubameGaeshi',rewardName:'燕返し',hp:6,kind:'kojiro',colors:['#e8eef8','#7187a8','#3b536f']},
  kannu:{id:'kannu',name:'赤兎を駆る KANNU',type:'halberd',skill:'kannuSweep',reward:'kannuSweep',rewardName:'騎将偃月斬',hp:7,kind:'kannu',colors:['#276c5a','#b23a31','#e5c65d']},
  gladiator:{id:'gladiator',name:'闘技の守護者 グラディウス',type:'sword',skill:'gladiatorAdvance',reward:'gladiatorAdvance',rewardName:'闘士の進撃',hp:6,kind:'gladiator',colors:['#8f312c','#d6b36b','#f3e6c3']},
  leon:{id:'leon',name:'重装槍兵 レオン',type:'spear',skill:'phalanxDrive',reward:'phalanxDrive',rewardName:'ファランクス',hp:7,kind:'leon',colors:['#405a7b','#d7c27a','#e9edf2']},
  sieg:{id:'sieg',name:'竜狩り騎士 ジーク',type:'greatsword',skill:'heavenFall',reward:'dragonBreaker',rewards:['dragonBreaker','heavenFall'],rewardName:'竜断／天墜斬',hp:8,kind:'sieg',colors:['#493f59','#b9a7c8','#d65b4d']},
  athos:{id:'athos',name:'決闘家 アトス',type:'rapier',skill:'tripleThrust',reward:'tripleThrust',rewardName:'三段刺突',hp:6,kind:'athos',colors:['#244d82','#d9e8f7','#b8954f']},
+ aramis:{id:'aramis',name:'幻影剣士 アラミス',type:'rapier',skill:'shadowRush',reward:'shadowRush',rewardName:'ミラージュ・ランジ',hp:6,kind:'aramis',colors:['#493b78','#d9d4f4','#74d6e8']},
  aegis:{id:'aegis',name:'重装守護者 イージス',type:'doubleShield',skill:'aegisRush',reward:'aegisRush',rewardName:'鉄壁突進',hp:8,kind:'aegis',colors:['#4a535e','#d9e1e8','#8ea0b2']}
 };
-function beginBoss(b,meta){bossBattle={...meta,boss:b};enemyTeam={name:b.name,colors:b.colors||['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));let e=unit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=b.hp||3;e.maxHp=b.hp||3;e.r=b.kind==='troll'?52:b.kind==='bull'?50:b.kind==='wyvern'?48:46;e.bossKind=b.kind||null;e.beastKind=['troll','bull','wyvern'].includes(b.kind)?b.kind:null;e.beastState=b.kind==='wyvern'?'ground':b.kind==='bull'?'stalk':'';e.beastTimer=b.kind==='wyvern'?.8:b.kind==='bull'?.7:0;if(e.beastKind)e.species=b.kind;const bossLooks={musashi:['fox','#d7b168'],sasuke:['rabbit','#818aa2'],hanzo:['snowFox','#465b70'],kojiro:['snowFox','#f3f7ff'],kannu:['frog','#5fbf73'],gladiator:['frog','#c77b48'],leon:['rabbit','#a9b6c7'],sieg:['fox','#b38a7a'],athos:['rabbit','#e8e0d4'],aegis:['frog','#91a4b3']};if(bossLooks[b.kind]){e.species=bossLooks[b.kind][0];e.furOverride=bossLooks[b.kind][1]}if(b.kind==='kannu'){e.speedBonus=65;e.r=50;e.mounted=true}actors.push(e);effects=[];blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent=`BOSS HP ${e.hp}/${e.maxHp}`;ui.status.textContent=e.beastKind?`${b.name}：魔獣の森。木の幹を避けて戦う。拠点なし、こちらは一撃OUT、魔獣は${e.maxHp}HITで撃破`:bossBattle.source==='rift'?`${b.name}：時空決闘。壁・拠点なし、強敵は${e.maxHp}HITで撃破`:`${b.name}：障害物・拠点なしの決闘。こちらは一撃OUT、強敵は${e.maxHp}HITで撃破`;syncModeButtons()}
+function beginBoss(b,meta){bossBattle={...meta,boss:b};enemyTeam={name:b.name,colors:b.colors||['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));let e=unit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=b.hp||3;e.maxHp=b.hp||3;e.r=b.kind==='troll'?52:b.kind==='bull'?50:b.kind==='wyvern'?48:46;e.bossKind=b.kind||null;e.beastKind=['troll','bull','wyvern'].includes(b.kind)?b.kind:null;e.beastState=b.kind==='wyvern'?'ground':b.kind==='bull'?'stalk':'';e.beastTimer=b.kind==='wyvern'?.8:b.kind==='bull'?.7:0;if(e.beastKind)e.species=b.kind;const bossLooks={musashi:['fox','#d7b168'],sasuke:['rabbit','#818aa2'],hanzo:['snowFox','#465b70'],kojiro:['snowFox','#f3f7ff'],kannu:['frog','#5fbf73'],gladiator:['frog','#c77b48'],leon:['rabbit','#a9b6c7'],sieg:['fox','#b38a7a'],athos:['rabbit','#e8e0d4'],aramis:['snowFox','#b9b0dc'],aegis:['frog','#91a4b3']};if(bossLooks[b.kind]){e.species=bossLooks[b.kind][0];e.furOverride=bossLooks[b.kind][1]}if(b.kind==='kannu'){e.speedBonus=65;e.r=50;e.mounted=true}actors.push(e);effects=[];if(b.kind==='hanzo')spawnHanzoClones(e,true);blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent=`BOSS HP ${e.hp}/${e.maxHp}`;ui.status.textContent=e.beastKind?`${b.name}：魔獣の森。木の幹を避けて戦う。拠点なし、こちらは一撃OUT、魔獣は${e.maxHp}HITで撃破`:bossBattle.source==='rift'?`${b.name}：時空決闘。壁・拠点なし、強敵は${e.maxHp}HITで撃破`:`${b.name}：障害物・拠点なしの決闘。こちらは一撃OUT、強敵は${e.maxHp}HITで撃破`;syncModeButtons()}
 function startBoss(){if(progress.pendingBoss===null){ui.status.textContent='今は静かです。ランク大会を終えると強敵が現れます';return}let bi=Math.min(progress.pendingBoss,BOSSES.length-1),b=BOSSES[bi];beginBoss(b,{source:'trial',index:bi})}
 function startDojoBoss(kind){let b=DOJO_BOSSES[kind];if(!b)return;if(!progress.specialChampions.includes(b.specialId)){ui.status.textContent=`まず${kind==='long'?'長物限定大会':'軽量武器専門大会'}で優勝してください`;return}if(progress.dojoDefeated.includes(kind)){ui.status.textContent=`${kind==='long'?'長物道場':'軽量道場'}の奥義は修得済みです`;return}beginBoss(b,{source:'dojo',dojo:kind})}
 function openBeastMenu(){let unlocked=progress.beastUnlocked.filter(id=>BEAST_BOSSES[id]);if(!unlocked.length){ui.status.textContent='大会で優勝すると魔獣の気配が現れます';return}let list=q('#rankList');q('#tournamentTitle').textContent='魔獣の森';q('#tournamentMessage').textContent='戦う魔獣を選んでください。撃破済みの魔獣とも何度でも再戦できます。';list.innerHTML=unlocked.map(id=>{let b=BEAST_BOSSES[id],done=progress.beastDefeated.includes(id);return `<button class="rankBtn" data-beast="${id}"><b>${b.name}</b><small>${done?'撃破済み・再戦可能':'未撃破'}｜BOSS HP ${b.hp}</small></button>`}).join('');q('#tournamentStandings').innerHTML='<p class="note">魔獣戦は拠点なし。森の地形で戦います。</p>';list.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{q('#tournament').classList.add('hidden');startBeastBoss(btn.dataset.beast)});q('#tournament').classList.remove('hidden');mode='menu';syncModeButtons()}
@@ -1252,6 +1273,8 @@ function drawEffect(e){
    // 土煙
    x.globalAlpha=.36*(1-p);x.fillStyle='#c9aa72';for(let i=0;i<8;i++){let aa=i*.83+(e.a||0),rr=18+p*(28+i*3);x.beginPath();x.arc(Math.cos(aa)*rr,Math.sin(aa)*rr*.55-10*p,8+8*p,0,Math.PI*2);x.fill()}
    x.restore();
+ }else if(e.kind==='eightShadows'){
+   let a=e.owner;if(a&&a.alive){let p=1-e.t/e.max;x.save();x.globalAlpha=.24*(1-p*.45);x.fillStyle='#b8e8ff';x.shadowBlur=14;x.shadowColor='#8fdcff';for(let i=0;i<8;i++){let aa=i*Math.PI/4+p*.35,rr=42+p*34;x.beginPath();x.ellipse(a.x+Math.cos(aa)*rr,a.y+Math.sin(aa)*rr,17,24,0,0,Math.PI*2);x.fill()}x.restore()}
  }else if(e.kind==='shadowRush'){
    let p=1-e.t/e.max,col='#70d8ff';x.save();x.globalAlpha=.34*(1-p*.7);x.translate(e.x+Math.cos(e.a)*p*180,e.y+Math.sin(e.a)*p*180);x.fillStyle=col;x.shadowBlur=18;x.shadowColor=col;x.beginPath();x.ellipse(0,0,22,30,0,0,Math.PI*2);x.fill();x.globalAlpha=.16;for(let i=1;i<=3;i++){x.beginPath();x.ellipse(-Math.cos(e.a)*i*28,-Math.sin(e.a)*i*28,19,27,0,0,Math.PI*2);x.fill()}x.restore();
  }else if(e.kind==='shadowPop'){let p=1-e.t/e.max;x.save();x.globalAlpha=.48*(1-p);x.strokeStyle='#8deaff';x.shadowBlur=18;x.shadowColor='#8deaff';x.lineWidth=6;x.beginPath();x.arc(e.x,e.y,24+p*44,0,Math.PI*2);x.stroke();x.fillStyle='#d8f8ff';x.font='bold 20px sans-serif';x.fillText('幻',e.x-10,e.y+7);x.restore();
