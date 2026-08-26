@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.62';
+const VERSION='v0.65';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -905,15 +905,24 @@ function ai(a,dt){
   move(a,Math.cos(ang),Math.sin(ang),dt);
 }
 function inputVector(){let vx=joy.dx+(keys.ArrowRight||keys.d?1:0)-(keys.ArrowLeft||keys.a?1:0),vy=joy.dy+(keys.ArrowDown||keys.s?1:0)-(keys.ArrowUp||keys.w?1:0);let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}return [vx,vy]}
+function makePracticeOpponent(){
+  let e=unit(1,0,'sword','spinSlash','none');
+  e.x=790;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;e.practiceOpponent=true;
+  e.practiceAttackWait=.75;e.practiceAttackHold=0;e.practiceRetreat=0;e.alive=true;
+  e.species='frog';e.furOverride='#78c96b';
+  return e;
+}
 function ensurePracticeOpponent(){
   if(mode!=='practice')return;
-  let e=actors.find(a=>a.team===1&&!a.isPlayerClone);
-  if(e&&e.alive)return;
-  // 練習場は常に1対1。何らかの処理で相手が消えても、その場で練習相手を復帰させる。
-  e=unit(1,0,'sword','spinSlash');
-  e.x=810;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;
-  e.practiceAttackWait=.8;e.practiceAttackHold=0;e.practiceRetreat=0;e.alive=true;
-  actors=actors.filter(a=>a.team!==1||a.isPlayerClone);actors.push(e);
+  let e=actors.find(a=>a.practiceOpponent&&a.team===1&&a.alive);
+  if(!e){
+    actors=actors.filter(a=>a.team!==1);
+    e=makePracticeOpponent();
+    actors.push(e);
+  }
+  if(!Number.isFinite(e.x)||!Number.isFinite(e.y)||e.x<court.x+70||e.x>court.x+court.w-70||e.y<court.y+70||e.y>court.y+court.h-70){
+    e.x=790;e.y=360;
+  }
 }
 function update(dt){
   let [vx,vy]=inputVector();
@@ -921,8 +930,11 @@ function update(dt){
     moveField(vx,vy,dt);if(!progress.elderQuestDone&&!elderEvent.active&&performance.now()>elderEvent.nextRoll){elderEvent.nextRoll=performance.now()+12000;if(Math.random()<.24){elderEvent={active:true,x:430+Math.random()*390,y:315+Math.random()*150,nextRoll:elderEvent.nextRoll};ui.status.textContent='道のどこかに「！」が現れたようです'}}let fac=nearestFacility();
     ui.status.textContent=fac?`${fac.name}の近くです。B「入る」`:'ホームで編成・競技場で大会・練習場で1対1・道場や魔獣の森で強敵戦';return;
   }
-  if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||roundOver)return;
-  if(mode==='practice')ensurePracticeOpponent();
+  if(mode==='practice'){
+    roundOver=0;
+    ensurePracticeOpponent();
+  }
+  if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||(roundOver&&mode!=='practice'))return;
   for(let a of actors){
     if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.steadfastT=Math.max(0,(a.steadfastT||0)-dt);a.aiClock=(a.aiClock||0)+dt;a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.skillCdB=Math.max(0,(a.skillCdB||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);if(a.counterT<=0){a.counterCharges=0;a.substitutionReady=false;}if(a.shadowRushT>0){a.shadowRushT=Math.max(0,a.shadowRushT-dt);if(a.shadowRushT<=0&&a.shadowRushReady){a.shadowRushReady=false;a.spearAdvanceT=0;let e2=a.shadowRushTarget&&a.shadowRushTarget.alive?a.shadowRushTarget:nearestEnemy(a);a.shadowRushTarget=null;if(e2)a.face=angle(a,e2);let cut={kind:'swing',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:154,arc:.16,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.01,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:54,lungeApplied:false,knockback:18,specialHit:'ミラージュ・ランジ！'};effects.push(cut);a.attackPose=cut;a.cd=Math.max(a.cd,.42);}}a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0)ai(a,dt)
   }
@@ -984,7 +996,17 @@ function update(dt){
 }
 
 function startPractice(){
-  mode='practice';roundOver=0;practiceHits=[0,0];if(ui.practiceExit)ui.practiceExit.classList.remove('hidden');enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['balanced']};actors=[];let p=unit(0,0,formation[0],formationSkills[0],formationSkillsB[0]);p.x=470;p.y=360;p.ai=false;p.tactic='balanced';let e=unit(1,0,'sword','spinSlash');e.x=810;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;e.practiceAttackWait=.8;e.practiceAttackHold=0;e.practiceRetreat=0;actors=[p,e];effects=[];ui.mode.textContent='PRACTICE';ui.score.textContent='0 - 0';ui.status.textContent='1対1練習：OUTなし・ヒット数だけ記録';syncModeButtons();updatePracticeHud();
+  mode='practice';roundOver=0;practiceHits=[0,0];
+  if(ui.practiceExit)ui.practiceExit.classList.remove('hidden');
+  enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['attack']};
+  effects=[];
+  let p=unit(0,0,formation[0],formationSkills[0],formationSkillsB[0]);
+  p.x=475;p.y=360;p.ai=false;p.tactic='balanced';p.alive=true;
+  let e=makePracticeOpponent();
+  actors=[p,e];
+  ui.mode.textContent='PRACTICE';ui.score.textContent='0 - 0';
+  ui.status.textContent='1対1練習：練習相手あり／OUTなし・ヒット数だけ記録';
+  syncModeButtons();updatePracticeHud();
 }
 function updatePracticeHud(){if(ui.practiceScore)ui.practiceScore.textContent=`あなた ${practiceHits[0]} - ${practiceHits[1]} 相手`}
 function practiceHit(target,attacker,source){practiceHits[attacker.team]++;target.invuln=.45;target.stun=Math.max(target.stun,.28);knockApart(attacker,target,10,30);effects.push({kind:'practiceHit',x:target.x,y:target.y,t:.42});updatePracticeHud();ui.score.textContent=`${practiceHits[0]} - ${practiceHits[1]}`}
@@ -1185,7 +1207,11 @@ function drawBeastBoss(a){
  }
  x.shadowBlur=0;x.restore();
 }
-function drawActor(a){if(!a.alive)return;if(a.species==='mouse'){x.save();x.translate(a.x,a.y);x.rotate(a.face);x.fillStyle='#8d837b';x.beginPath();x.ellipse(0,0,26,18,0,0,Math.PI*2);x.fill();x.beginPath();x.arc(18,-11,8,0,Math.PI*2);x.fill();x.beginPath();x.arc(18,11,8,0,Math.PI*2);x.fill();x.strokeStyle='#7a6c63';x.lineWidth=4;x.beginPath();x.moveTo(-22,4);x.quadraticCurveTo(-42,18,-50,3);x.stroke();x.fillStyle='#fff';x.beginPath();x.arc(16,-5,4,0,Math.PI*2);x.fill();x.fillStyle='#222';x.beginPath();x.arc(17,-5,2,0,Math.PI*2);x.fill();x.fillStyle='#f4eadc';x.fillRect(-8,-7,16,14);x.restore();return}if(a.beastKind){drawBeastBoss(a);return}x.save();x.translate(a.x,a.y);if(a.mounted){x.save();x.translate(-4,28);x.shadowBlur=14;x.shadowColor='#e34b45';x.fillStyle='#a9282b';x.beginPath();x.ellipse(0,8,55,25,0,0,Math.PI*2);x.fill();x.fillStyle='#7d2025';x.beginPath();x.ellipse(47,-4,22,17,-.18,0,Math.PI*2);x.fill();x.strokeStyle='#762025';x.lineWidth=11;x.lineCap='round';x.beginPath();x.moveTo(-30,23);x.lineTo(-37,57);x.moveTo(-7,26);x.lineTo(-12,60);x.moveTo(22,24);x.lineTo(29,57);x.moveTo(38,18);x.lineTo(44,52);x.stroke();x.fillStyle='#e9c763';x.fillRect(-14,-10,34,11);x.strokeStyle='#3a2927';x.lineWidth=4;x.beginPath();x.moveTo(58,-10);x.lineTo(72,-18);x.stroke();x.shadowBlur=0;x.restore()}x.scale(1.6,1.6);if(mode==='boss'&&bossBattle?.source==='rift'){x.globalAlpha=.28;x.fillStyle='#dff8ff';x.beginPath();x.ellipse(0,20,30,12,0,0,Math.PI*2);x.fill();x.globalAlpha=1;x.shadowBlur=10;x.shadowColor='#b9e9ff'}
+function drawActor(a){if(!a.alive)return;
+if(mode==='practice'&&a.practiceOpponent){
+  x.save();x.fillStyle='#203c32';x.font='bold 16px sans-serif';x.textAlign='center';
+  x.fillText('練習相手',a.x,a.y-70);x.textAlign='start';x.restore();
+}if(a.species==='mouse'){x.save();x.translate(a.x,a.y);x.rotate(a.face);x.fillStyle='#8d837b';x.beginPath();x.ellipse(0,0,26,18,0,0,Math.PI*2);x.fill();x.beginPath();x.arc(18,-11,8,0,Math.PI*2);x.fill();x.beginPath();x.arc(18,11,8,0,Math.PI*2);x.fill();x.strokeStyle='#7a6c63';x.lineWidth=4;x.beginPath();x.moveTo(-22,4);x.quadraticCurveTo(-42,18,-50,3);x.stroke();x.fillStyle='#fff';x.beginPath();x.arc(16,-5,4,0,Math.PI*2);x.fill();x.fillStyle='#222';x.beginPath();x.arc(17,-5,2,0,Math.PI*2);x.fill();x.fillStyle='#f4eadc';x.fillRect(-8,-7,16,14);x.restore();return}if(a.beastKind){drawBeastBoss(a);return}x.save();x.translate(a.x,a.y);if(a.mounted){x.save();x.translate(-4,28);x.shadowBlur=14;x.shadowColor='#e34b45';x.fillStyle='#a9282b';x.beginPath();x.ellipse(0,8,55,25,0,0,Math.PI*2);x.fill();x.fillStyle='#7d2025';x.beginPath();x.ellipse(47,-4,22,17,-.18,0,Math.PI*2);x.fill();x.strokeStyle='#762025';x.lineWidth=11;x.lineCap='round';x.beginPath();x.moveTo(-30,23);x.lineTo(-37,57);x.moveTo(-7,26);x.lineTo(-12,60);x.moveTo(22,24);x.lineTo(29,57);x.moveTo(38,18);x.lineTo(44,52);x.stroke();x.fillStyle='#e9c763';x.fillRect(-14,-10,34,11);x.strokeStyle='#3a2927';x.lineWidth=4;x.beginPath();x.moveTo(58,-10);x.lineTo(72,-18);x.stroke();x.shadowBlur=0;x.restore()}x.scale(1.6,1.6);if(mode==='boss'&&bossBattle?.source==='rift'){x.globalAlpha=.28;x.fillStyle='#dff8ff';x.beginPath();x.ellipse(0,20,30,12,0,0,Math.PI*2);x.fill();x.globalAlpha=1;x.shadowBlur=10;x.shadowColor='#b9e9ff'}
 let enemyCol=a.team?(enemyTeam?.colors?.[a.i%enemyTeam.colors.length]||'#e56f74'):null;
 let species=a.species;
 if(species===0)species='frog';else if(species===1)species='rabbit';else if(species===2)species='fox';
