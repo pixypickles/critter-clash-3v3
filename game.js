@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.69';
+const VERSION='v0.70';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -43,7 +43,8 @@ const TYPES={
   halberd:{name:'ハルバード',r:'halberd',l:'spearGuard',speed:158,weight:6,defaultSkill:'halberdDoubleSweep'},
   rapier:{name:'レイピア',r:'rapier',l:'rapierParry',speed:218,weight:2,defaultSkill:'dashSlash'},
   greatsword:{name:'両手剣',r:'greatsword',l:'greatswordGuard',speed:138,weight:7,defaultSkill:'spinSlash'},
-  gauntlet:{name:'競技手甲',r:'gauntletAttack',l:'gauntletGuard',speed:258,weight:0,defaultSkill:'dashSlash'}
+  gauntlet:{name:'競技手甲',r:'gauntletAttack',l:'gauntletGuard',speed:258,weight:0,defaultSkill:'dashSlash'},
+  ironBall:{name:'鎖鉄球',r:'ironBallAttack',l:'ironBallSpin',speed:116,weight:9,defaultSkill:'none'}
 };
 let formation=['sword','spear','dagger'],formationSkills=['spinSlash','doubleThrust','dashSlash'],formationSkillsB=['none','none','none'],formationTactics=['balanced','support','flank'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[],practiceHits=[0,0],enemyTeam=null;
 const SAVE_KEY='kbs_team_v020',PROGRESS_KEY='kbs_progress_v020';
@@ -54,9 +55,9 @@ const RANKS=[
  {id:'master',name:'マスター大会',label:'RANK A'},
  {id:'legend',name:'レジェンド大会',label:'RANK S'}
 ];
-let progress={unlocked:0,titles:[],unlockedSkills:[],pendingBoss:null,defeatedBosses:[],specialChampions:[],dojoDefeated:[],beastUnlocked:[],beastDefeated:[],riftDefeated:[],rankChampions:[],gauntletUnlocked:false,elderQuestDone:false};
+let progress={unlocked:0,titles:[],unlockedSkills:[],pendingBoss:null,defeatedBosses:[],specialChampions:[],dojoDefeated:[],beastUnlocked:[],beastDefeated:[],riftDefeated:[],rankChampions:[],gauntletUnlocked:false,elderQuestDone:false,ironBallUnlocked:false};
 let elderEvent={active:false,x:0,y:0,nextRoll:0};
-function loadSavedTeam(){try{let d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');if(d){if(Array.isArray(d.formation)&&d.formation.length===3)formation=d.formation.map(v=>TYPES[v]?v:'sword');if(Array.isArray(d.tactics)&&d.tactics.length===3)formationTactics=d.tactics.map(v=>TACTICS[v]?v:'balanced');formationSkills=formation.map((v,i)=>d.skills?.[i]&&SKILLS[d.skills[i]]?d.skills[i]:TYPES[v].defaultSkill);formationSkillsB=formation.map((v,i)=>d.skillsB?.[i]&&SKILLS[d.skillsB[i]]?d.skillsB[i]:'none')}}catch(e){}try{let d=JSON.parse(localStorage.getItem(PROGRESS_KEY)||'null');if(d&&Number.isInteger(d.unlocked))progress={unlocked:Math.max(0,Math.min(RANKS.length-1,d.unlocked)),titles:Array.isArray(d.titles)?d.titles:[],unlockedSkills:Array.isArray(d.unlockedSkills)?d.unlockedSkills:[],pendingBoss:Number.isInteger(d.pendingBoss)?d.pendingBoss:null,defeatedBosses:Array.isArray(d.defeatedBosses)?d.defeatedBosses:[],specialChampions:Array.isArray(d.specialChampions)?d.specialChampions:[],dojoDefeated:Array.isArray(d.dojoDefeated)?d.dojoDefeated:[],beastUnlocked:Array.isArray(d.beastUnlocked)?d.beastUnlocked:[],beastDefeated:Array.isArray(d.beastDefeated)?d.beastDefeated:[],riftDefeated:Array.isArray(d.riftDefeated)?d.riftDefeated:[],rankChampions:Array.isArray(d.rankChampions)?d.rankChampions:[],gauntletUnlocked:!!d.gauntletUnlocked,elderQuestDone:!!d.elderQuestDone}}catch(e){}}
+function loadSavedTeam(){try{let d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');if(d){if(Array.isArray(d.formation)&&d.formation.length===3)formation=d.formation.map(v=>TYPES[v]?v:'sword');if(Array.isArray(d.tactics)&&d.tactics.length===3)formationTactics=d.tactics.map(v=>TACTICS[v]?v:'balanced');formationSkills=formation.map((v,i)=>d.skills?.[i]&&SKILLS[d.skills[i]]?d.skills[i]:TYPES[v].defaultSkill);formationSkillsB=formation.map((v,i)=>d.skillsB?.[i]&&SKILLS[d.skillsB[i]]?d.skillsB[i]:'none')}}catch(e){}try{let d=JSON.parse(localStorage.getItem(PROGRESS_KEY)||'null');if(d&&Number.isInteger(d.unlocked))progress={unlocked:Math.max(0,Math.min(RANKS.length-1,d.unlocked)),titles:Array.isArray(d.titles)?d.titles:[],unlockedSkills:Array.isArray(d.unlockedSkills)?d.unlockedSkills:[],pendingBoss:Number.isInteger(d.pendingBoss)?d.pendingBoss:null,defeatedBosses:Array.isArray(d.defeatedBosses)?d.defeatedBosses:[],specialChampions:Array.isArray(d.specialChampions)?d.specialChampions:[],dojoDefeated:Array.isArray(d.dojoDefeated)?d.dojoDefeated:[],beastUnlocked:Array.isArray(d.beastUnlocked)?d.beastUnlocked:[],beastDefeated:Array.isArray(d.beastDefeated)?d.beastDefeated:[],riftDefeated:Array.isArray(d.riftDefeated)?d.riftDefeated:[],rankChampions:Array.isArray(d.rankChampions)?d.rankChampions:[],gauntletUnlocked:!!d.gauntletUnlocked,elderQuestDone:!!d.elderQuestDone,ironBallUnlocked:!!d.ironBallUnlocked}}catch(e){}}
 function saveTeam(){try{localStorage.setItem(SAVE_KEY,JSON.stringify({formation:[...formation],tactics:[...formationTactics],skills:[...formationSkills],skillsB:[...formationSkillsB]}));ui.status.textContent='ホーム編成をセーブしました'}catch(e){ui.status.textContent='編成を保存できませんでした'}}
 function saveProgress(){try{localStorage.setItem(PROGRESS_KEY,JSON.stringify(progress))}catch(e){}}
 
@@ -110,9 +111,9 @@ function teamsForRank(rankIndex){return ENEMY_TEAMS.filter(t=>t.rank===rankIndex
 
 const PLAYER_TEAM_NAME='スノー・フォックス';
 const BLUE_UNIFORM=['#ffffff','#2f7fd3','#9fe8ff'];
-function skillFits(type,id,sk){if(type==='gauntlet'&&['dashSlash','fiveSlash','substitution'].includes(id))return true;if(sk.owner==='all')return true;if(sk.owner===type)return true;if(sk.owner==='long'&&['spear','halberd','greatsword'].includes(type))return true;if(sk.owner==='light'&&['dagger','rapier','katana'].includes(type))return true;if(type==='rapier'&&id==='fiveSlash')return true;if((type==='katana'||type==='greatsword')&&id==='spinSlash')return true;if(type==='halberd'&&(id==='doubleThrust'||id==='whirlwindAdvance'))return true;if(type==='rapier'&&id==='dashSlash')return true;return false}
+function skillFits(type,id,sk){if(type==='ironBall')return sk.owner==='all';if(type==='gauntlet'&&['dashSlash','fiveSlash','substitution'].includes(id))return true;if(sk.owner==='all')return true;if(sk.owner===type)return true;if(sk.owner==='long'&&['spear','halberd','greatsword'].includes(type))return true;if(sk.owner==='light'&&['dagger','rapier','katana'].includes(type))return true;if(type==='rapier'&&id==='fiveSlash')return true;if((type==='katana'||type==='greatsword')&&id==='spinSlash')return true;if(type==='halberd'&&(id==='doubleThrust'||id==='whirlwindAdvance'))return true;if(type==='rapier'&&id==='dashSlash')return true;return false}
 function compatibleSkills(type){return Object.entries(SKILLS).filter(([id,sk])=>skillFits(type,id,sk)&&(id==='none'||id===TYPES[type].defaultSkill||id==='spinSlash'&&(type==='katana'||type==='greatsword')||id==='doubleThrust'&&type==='halberd'||id==='dashSlash'&&type==='rapier'||progress.unlockedSkills.includes(id)))}
-function availableWeapons(){return Object.entries(TYPES).filter(([k])=>k!=='gauntlet'||progress.gauntletUnlocked)}
+function availableWeapons(){return Object.entries(TYPES).filter(([k])=>(k!=='gauntlet'||progress.gauntletUnlocked)&&(k!=='ironBall'||progress.ironBallUnlocked))}
 function buildSlots(container,home=false){
   container.innerHTML='';
   for(let i=0;i<3;i++){
@@ -343,6 +344,11 @@ function hand(a,side,down=true){
     }
     return;
   }
+  if(kind==='ironBallSpin'){
+    a.ironBallHolding=down;
+    if(down){let e=nearestEnemy(a);if(e)a.face=angle(a,e);a.ironBallSpin=Math.max(a.ironBallSpin||0,.01);}
+    return;
+  }
   // 短剣の左ボタンは二刀を体の内側へ寄せる防御。押している間だけ有効。
   if(kind==='gauntletGuard'){a.daggerGuard=down;return;}
   if(kind==='daggerGuard'){
@@ -382,6 +388,13 @@ function hand(a,side,down=true){
     a.handAnimL=a.handAnimR=.34;
     gauntletCombo(a);
     return;
+  }
+  if(kind==='ironBallAttack'){
+    if((a.ironBallSpin||0)<.08||!a.ironBallHolding){ui.status.textContent='鎖鉄球：防御ボタンで回して勢いをつけてから攻撃！';return;}
+    const power=Math.max(.18,Math.min(1,(a.ironBallSpin||0)/1.0));
+    a.ironBallHolding=false;a.ironBallSpin=0;a.ironBallThrown=.58;
+    let th={kind:'thrust',weapon:'ironBallAttack',side:'r',x:a.x,y:a.y,a:a.face,range:105+power*48,arc:.20,t:.58,max:.58,windup:.04,active:.18,recovery:.36,delay:0,team:a.team,owner:a,resolved:false,parry:false,recoveryApplied:false,knockback:42+power*48,ironBallPower:power,specialHit:power>.78?'鉄球・最大加速！':null};
+    effects.push(th);a.attackPose=th;a.cd=.82+power*.22;return;
   }
   if(side==='l')a.handAnimL=.42;else a.handAnimR=.42;
   if(kind==='rapier'){
@@ -682,7 +695,7 @@ function rescueFromWall(a){
 function move(a,vx,vy,dt){
   // 壁に斜めから当たっても完全停止せず、壁沿いに滑る。
   // 長い分岐壁でAIが全員スタックして『フリーズ』したように見えるのを防ぐ。
-  let sp=TYPES[a.type].speed*(a.shield?(a.type==='doubleShield'?.42:.62):a.greatswordGuard?.48:a.daggerGuard?.72:1);
+  let sp=TYPES[a.type].speed*(a.ironBallMoveSlow||1)*(a.shield?(a.type==='doubleShield'?.42:.62):a.greatswordGuard?.48:a.daggerGuard?.72:1);
   let dx=vx*sp*dt,dy=vy*sp*dt;
   let nx=Math.max(court.x+30,Math.min(court.x+court.w-30,a.x+dx));
   if(!collides(nx,a.y,a.r))a.x=nx;
@@ -951,7 +964,14 @@ function update(dt){
   }
   if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||roundOver)return;
   for(let a of actors){
-    if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.steadfastT=Math.max(0,(a.steadfastT||0)-dt);a.aiClock=(a.aiClock||0)+dt;a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.skillCdB=Math.max(0,(a.skillCdB||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);if(a.counterT<=0){a.counterCharges=0;a.substitutionReady=false;}if(a.shadowRushT>0){a.shadowRushT=Math.max(0,a.shadowRushT-dt);if(a.shadowRushT<=0&&a.shadowRushReady){a.shadowRushReady=false;a.spearAdvanceT=0;let e2=a.shadowRushTarget&&a.shadowRushTarget.alive?a.shadowRushTarget:nearestEnemy(a);a.shadowRushTarget=null;if(e2)a.face=angle(a,e2);let cut={kind:'swing',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:154,arc:.16,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.01,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:54,lungeApplied:false,knockback:18,specialHit:'ミラージュ・ランジ！'};effects.push(cut);a.attackPose=cut;a.cd=Math.max(a.cd,.42);}}a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0){
+    if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.steadfastT=Math.max(0,(a.steadfastT||0)-dt);a.aiClock=(a.aiClock||0)+dt;a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.skillCdB=Math.max(0,(a.skillCdB||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);if(a.counterT<=0){a.counterCharges=0;a.substitutionReady=false;}if(a.shadowRushT>0){a.shadowRushT=Math.max(0,a.shadowRushT-dt);if(a.shadowRushT<=0&&a.shadowRushReady){a.shadowRushReady=false;a.spearAdvanceT=0;let e2=a.shadowRushTarget&&a.shadowRushTarget.alive?a.shadowRushTarget:nearestEnemy(a);a.shadowRushTarget=null;if(e2)a.face=angle(a,e2);let cut={kind:'swing',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:154,arc:.16,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.01,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:54,lungeApplied:false,knockback:18,specialHit:'ミラージュ・ランジ！'};effects.push(cut);a.attackPose=cut;a.cd=Math.max(a.cd,.42);}}a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);a.ironBallThrown=Math.max(0,(a.ironBallThrown||0)-dt);
+    if(a.type==='ironBall'){
+      if(a.ironBallHolding&&a.stun<=0){
+        a.ironBallSpin=Math.min(1,(a.ironBallSpin||0)+dt*1.45);a.ironBallMoveSlow=.48;
+        a.ironBallHitCd=Math.max(0,(a.ironBallHitCd||0)-dt);
+        if(a.ironBallHitCd<=0){for(let b of actors){if(!b.alive||b.team===a.team||b.invuln>0)continue;if(dist(a,b)<a.r+b.r+42){let src={weapon:'ironBallAttack',knockback:26+a.ironBallSpin*32,specialHit:'鉄球旋回！'};if(blocked(b,a,src))knockApart(a,b,6,34);else combatHit(b,a,src);a.ironBallHitCd=.34;break;}}}
+      }else{a.ironBallSpin=Math.max(0,(a.ironBallSpin||0)-dt*2.2);a.ironBallMoveSlow=1;}
+    }if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0){
       try{ai(a,dt)}catch(err){
         a.aiError=String(err&&err.message||err);
         console.error('AI error',a,err);
@@ -1052,7 +1072,7 @@ const SPECIAL_TOURNAMENTS=[
   {name:'ムーン・キャッツ',style:'差し返し',colors:['#5d4a86','#a48bd1','#e8e0ff'],formation:['katana','rapier','dagger'],tactics:['defense','balanced','flank']},
   {name:'ブルー・ハレス',style:'機動戦',colors:['#2568a8','#69b8dc','#e7f7ff'],formation:['dagger','dagger','katana'],tactics:['flank','flank','balanced']}]}
 ];
-function openSpecialTournament(){let list=q('#rankList');q('#tournamentTitle').textContent='特別競技場';q('#tournamentMessage').textContent='武器カテゴリを限定した大会です。ホームで条件に合う3人を編成して参加してください。';list.innerHTML=SPECIAL_TOURNAMENTS.map((e,i)=>`<button class="rankBtn" data-special="${i}"><b>${e.name}</b><small>${e.desc}｜3チーム総当たり</small></button>`).join('');q('#tournamentStandings').innerHTML='<p class="note">限定ルールでは3人全員が指定武器である必要があります。</p>';list.querySelectorAll('button').forEach(b=>b.onclick=()=>startSpecialTournament(+b.dataset.special));q('#tournament').classList.remove('hidden');mode='menu';syncModeButtons()}
+function openSpecialTournament(){if(progress.specialChampions.includes('long')&&!progress.ironBallUnlocked){progress.ironBallUnlocked=true;saveProgress();ui.status.textContent='長物限定大会の優勝記録から「鎖鉄球」を受け取りました';}let list=q('#rankList');q('#tournamentTitle').textContent='特別競技場';q('#tournamentMessage').textContent='武器カテゴリを限定した大会です。ホームで条件に合う3人を編成して参加してください。';list.innerHTML=SPECIAL_TOURNAMENTS.map((e,i)=>`<button class="rankBtn" data-special="${i}"><b>${e.name}</b><small>${e.desc}｜3チーム総当たり</small></button>`).join('');q('#tournamentStandings').innerHTML='<p class="note">限定ルールでは3人全員が指定武器である必要があります。</p>';list.querySelectorAll('button').forEach(b=>b.onclick=()=>startSpecialTournament(+b.dataset.special));q('#tournament').classList.remove('hidden');mode='menu';syncModeButtons()}
 function startSpecialTournament(i){let e=SPECIAL_TOURNAMENTS[i],bad=formation.filter(w=>!e.allowed.includes(w));if(bad.length){q('#tournamentMessage').textContent=`${e.name}：現在の編成に参加不可の武器があります。ホームで「${e.desc}」に編成してから参加してください。`;return}tournament={rankIndex:null,special:e,index:0,results:[],cpuWins:simulateCpuLeague(0),teams:e.teams};q('#tournament').classList.add('hidden');enemyTeam=e.teams[0];startMatch()}
 function openTournament(){q('#tournamentTitle').textContent='大会参加';q('#tournamentMessage').textContent='3チームと総当たりで対戦し、優勝すると次のランクへ進めます。';renderTournamentMenu();q('#tournament').classList.remove('hidden');mode='menu';syncModeButtons()}
 function renderTournamentMenu(){let list=q('#rankList');if(!list)return;list.innerHTML=RANKS.map((r,i)=>{let locked=i>progress.unlocked,cleared=progress.rankChampions.includes(r.id);let note=locked?'未解放':cleared?'優勝済み・再挑戦可能':i===3?'3チーム総当たり・優勝で時空の歪み解放':'3チーム総当たり・優勝で次ランク解放';return `<button class="rankBtn" data-rank="${i}" ${locked?'disabled':''}><b>${r.label}　${r.name}</b><small>${note}</small></button>`}).join('');q('#tournamentStandings').innerHTML='<p class="note">RANK C→B→A→S。各大会は3チーム総当たり、2勝以上で優勝です。RANK S優勝後に時空の歪みが安定します。</p>';list.querySelectorAll('button:not([disabled])').forEach(b=>b.onclick=()=>startTournament(+b.dataset.rank))}
@@ -1069,7 +1089,7 @@ function nextTournamentStep(){
   const special=tournament.special, rank=special?null:RANKS[tournament.rankIndex];
   q('#tournament').classList.remove('hidden');mode='menu';if(special)openSpecialTournament();else renderTournamentMenu();renderTournamentStandings();
   q('#tournamentTitle').textContent=champion?`${special?special.name:rank.name} 優勝！`:`${special?special.name:rank.name} 大会終了`;
-  q('#tournamentMessage').textContent=champion?`${wins}勝${3-wins}敗。優勝です！`:`${wins}勝${3-wins}敗。優勝には2勝以上が必要です。`;if(special&&champion&&!progress.specialChampions.includes(special.id)){progress.specialChampions.push(special.id);saveProgress();q('#tournamentMessage').textContent+=` フィールドの「${special.id==='long'?'長物道場':'軽量道場'}」に師範が現れました。`; }
+  q('#tournamentMessage').textContent=champion?`${wins}勝${3-wins}敗。優勝です！`:`${wins}勝${3-wins}敗。優勝には2勝以上が必要です。`;if(special&&champion&&!progress.specialChampions.includes(special.id)){progress.specialChampions.push(special.id);if(special.id==='long'&&!progress.ironBallUnlocked){progress.ironBallUnlocked=true;q('#tournamentMessage').textContent+=' 優勝景品「鎖鉄球」を獲得！ ホームで装備できます。';}saveProgress();q('#tournamentMessage').textContent+=` フィールドの「${special.id==='long'?'長物道場':'軽量道場'}」に師範が現れました。`; }
   if(!special&&champion){let rid=RANKS[tournament.rankIndex].id;if(!progress.rankChampions.includes(rid))progress.rankChampions.push(rid);if(progress.pendingBoss===null&&!progress.defeatedBosses.includes(tournament.rankIndex)){progress.pendingBoss=tournament.rankIndex;q('#tournamentMessage').textContent+=' フィールドの「修練の地」に強敵が現れました。';}
     if(tournament.rankIndex< RANKS.length-1&&progress.unlocked<tournament.rankIndex+1){progress.unlocked=tournament.rankIndex+1;q('#tournamentMessage').textContent+=' 次のランクの大会が解放されました。'}
     let beast=tournament.rankIndex===0?'wyvern':tournament.rankIndex===1?'troll':tournament.rankIndex===2?'bull':null;if(beast&&!progress.beastUnlocked.includes(beast)){progress.beastUnlocked.push(beast);q('#tournamentMessage').textContent+=` 魔獣の森に${beast==='wyvern'?'翼竜':beast==='troll'?'トロール':'猛牛魔獣'}が現れました。`;}
@@ -1272,6 +1292,7 @@ function weaponWeight(k){
   if(k==='spear'||k==='spearGuard')return 5;
   if(k==='halberd')return 6;
   if(k==='greatsword'||k==='greatswordGuard')return 7;
+  if(k==='ironBallAttack'||k==='ironBallSpin')return 9;
   return 4;
 }
 function weaponColor(k){return WEIGHT_COLORS[weaponWeight(k)]||WEIGHT_COLORS[4]}
@@ -1289,6 +1310,19 @@ function drawWeapon(k,side,active,anim=0){
    x.fillStyle=active?'#7debf2':'#b8dce5';x.strokeStyle='#f7ffff';x.lineWidth=3.5;
    x.beginPath();x.arc(0,0,21,0,Math.PI*2);x.fill();x.stroke();
    x.shadowBlur=0;x.strokeStyle='#527f8d';x.lineWidth=4;x.beginPath();x.arc(0,0,13,0,Math.PI*2);x.stroke();x.fillStyle='#efffff';x.beginPath();x.arc(0,0,5,0,Math.PI*2);x.fill();
+ }else if(k==='ironBallAttack'){
+   if(side<0){x.restore();return;}
+   let owner=drawWeapon.owner;
+   if(owner?.ironBallThrown>0){x.restore();return;}
+   let spin=owner?.ironBallSpin||0;
+   if(spin>0){
+     let aa=(performance.now()/1000)*(4+Math.min(1,spin)*7),rr=48+Math.min(1,spin)*18,bx=Math.cos(aa)*rr,by=Math.sin(aa)*rr;
+     x.strokeStyle='#34343b';x.lineWidth=4;x.beginPath();x.moveTo(10,0);x.lineTo(bx,by);x.stroke();
+     x.fillStyle='#17191d';x.strokeStyle='#6b6f78';x.lineWidth=3;x.beginPath();x.arc(bx,by,14,0,Math.PI*2);x.fill();x.stroke();
+   }else{
+     x.strokeStyle='#34343b';x.lineWidth=4;x.beginPath();x.moveTo(8,0);x.lineTo(34,12);x.stroke();
+     x.fillStyle='#17191d';x.strokeStyle='#6b6f78';x.lineWidth=3;x.beginPath();x.arc(42,15,14,0,Math.PI*2);x.fill();x.stroke();
+   }
  }else if(k==='gauntletAttack'){
    // 競技手甲は両拳装備。片側の呼び出しでも左右2個をまとめて描き、重複描画を避ける。
    if(side<0){x.restore();return;}
@@ -1361,6 +1395,13 @@ function drawWeapon(k,side,active,anim=0){
  x.restore();
 }
 function drawEffect(e){
+ if(e.weapon==='ironBallAttack'&&e.kind==='thrust'){
+   let ph=attackPhase(e),el=e.max-e.t,pr=ph==='windup'?Math.max(.15,el/Math.max(.001,e.windup)):ph==='active'?1:Math.max(0,1-(el-e.windup-e.active)/Math.max(.001,e.recovery));
+   let reach=e.range*pr,ox=e.owner?.x??e.x,oy=e.owner?.y??e.y,aa=e.a,bx=ox+Math.cos(aa)*reach,by=oy+Math.sin(aa)*reach;
+   x.save();x.strokeStyle='#303139';x.lineWidth=4;x.beginPath();x.moveTo(ox+Math.cos(aa)*18,oy+Math.sin(aa)*18);x.lineTo(bx,by);x.stroke();
+   x.fillStyle='#111318';x.strokeStyle='#70747c';x.lineWidth=3;x.beginPath();x.arc(bx,by,15,0,Math.PI*2);x.fill();x.stroke();x.restore();
+ }
+
  x.save();
  if(e.kind==='spinSkill'){
    let a=e.owner;if(a&&a.alive){
