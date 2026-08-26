@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.61';
+const VERSION='v0.62';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -377,6 +377,12 @@ function hand(a,side,down=true){
     a.cd=.58;
     return;
   }
+  if(kind==='gauntletAttack'){
+    // 手甲は汎用 attack() を使わず、左→右→左の専用三連突き。
+    a.handAnimL=a.handAnimR=.34;
+    gauntletCombo(a);
+    return;
+  }
   if(side==='l')a.handAnimL=.42;else a.handAnimR=.42;
   if(kind==='rapier'){
     rapierCombo(a);
@@ -390,8 +396,13 @@ function hand(a,side,down=true){
 
 
 function gauntletCombo(a){
-  if(a.cd>0)return;a.cd=.62;const sides=['l','r','l'];
-  for(let i=0;i<3;i++){let e={kind:'thrust',weapon:'gauntletAttack',side:sides[i],x:a.x,y:a.y,a:a.face,range:68,arc:.38,t:.25,max:.25,windup:.025,active:.095,recovery:.13,delay:i*.13,team:a.team,owner:a,resolved:false,parry:true,lunge:24,lungeApplied:false,recoveryApplied:false,knockback:i===2?14:5,retarget:true,retargeted:false};effects.push(e);if(i===0)a.attackPose=e;}
+  if(a.cd>0)return;
+  // 最短リーチの代わりに、三発とも大きく踏み込む。左→右→左。
+  a.cd=.66;const sides=['l','r','l'];
+  for(let i=0;i<3;i++){
+    let e={kind:'thrust',weapon:'gauntletAttack',side:sides[i],x:a.x,y:a.y,a:a.face,range:62,arc:.34,t:.27,max:.27,windup:.025,active:.095,recovery:.15,delay:i*.145,team:a.team,owner:a,resolved:false,parry:true,lunge:38,lungeApplied:false,recoveryApplied:false,knockback:i===2?14:5,retarget:true,retargeted:false};
+    effects.push(e);if(i===0)a.attackPose=e;
+  }
 }
 
 function daggerCombo(a){
@@ -1221,8 +1232,14 @@ function drawWeapon(k,side,active,anim=0){
  }else if(k==='gauntletAttack'){
    // 競技手甲は両拳装備。片側の呼び出しでも左右2個をまとめて描き、重複描画を避ける。
    if(side<0){x.restore();return;}
-   let col='#d9b8ff';x.shadowBlur=12;x.shadowColor=col;x.fillStyle='#fffaff';x.strokeStyle=col;x.lineWidth=3;
-   for(let sy of [-1,1]){x.beginPath();x.roundRect(7,sy*13-8,24,16,7);x.fill();x.stroke();x.fillStyle='#c89cf5';x.fillRect(10,sy*13-4,17,8);x.fillStyle='#fffaff';}
+   // 横向きでも腕当てに見えないよう、拳だけを包む短く丸い競技グローブ。
+   let col='#d6b0ff';x.shadowBlur=10;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=3;
+   for(let sy of [-1,1]){
+     x.fillStyle='#fffaff';x.beginPath();x.roundRect(9,sy*12-9,18,18,9);x.fill();x.stroke();
+     x.fillStyle='#c997f2';x.beginPath();x.roundRect(13,sy*12-6,11,12,6);x.fill();
+     x.strokeStyle='#f7ecff';x.lineWidth=2;x.beginPath();x.moveTo(14,sy*12);x.lineTo(23,sy*12);x.stroke();
+     x.strokeStyle=col;x.lineWidth=3;
+   }
 
  }else if(k==='spearGuard'){
    // 槍は左右別武器ではなく両手で一本。左手側では追加描画しない。
