@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.60';
+const VERSION='v0.61';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -110,7 +110,7 @@ function teamsForRank(rankIndex){return ENEMY_TEAMS.filter(t=>t.rank===rankIndex
 
 const PLAYER_TEAM_NAME='スノー・フォックス';
 const BLUE_UNIFORM=['#ffffff','#2f7fd3','#9fe8ff'];
-function skillFits(type,id,sk){if(type==='gauntlet'&&['dashSlash','fiveSlash','substitution','eightShadows'].includes(id))return true;if(sk.owner==='all')return true;if(sk.owner===type)return true;if(sk.owner==='long'&&['spear','halberd','greatsword'].includes(type))return true;if(sk.owner==='light'&&['dagger','rapier','katana'].includes(type))return true;if(type==='rapier'&&id==='fiveSlash')return true;if((type==='katana'||type==='greatsword')&&id==='spinSlash')return true;if(type==='halberd'&&(id==='doubleThrust'||id==='whirlwindAdvance'))return true;if(type==='rapier'&&id==='dashSlash')return true;return false}
+function skillFits(type,id,sk){if(type==='gauntlet'&&['dashSlash','fiveSlash','substitution'].includes(id))return true;if(sk.owner==='all')return true;if(sk.owner===type)return true;if(sk.owner==='long'&&['spear','halberd','greatsword'].includes(type))return true;if(sk.owner==='light'&&['dagger','rapier','katana'].includes(type))return true;if(type==='rapier'&&id==='fiveSlash')return true;if((type==='katana'||type==='greatsword')&&id==='spinSlash')return true;if(type==='halberd'&&(id==='doubleThrust'||id==='whirlwindAdvance'))return true;if(type==='rapier'&&id==='dashSlash')return true;return false}
 function compatibleSkills(type){return Object.entries(SKILLS).filter(([id,sk])=>skillFits(type,id,sk)&&(id==='none'||id===TYPES[type].defaultSkill||id==='spinSlash'&&(type==='katana'||type==='greatsword')||id==='doubleThrust'&&type==='halberd'||id==='dashSlash'&&type==='rapier'||progress.unlockedSkills.includes(id)))}
 function availableWeapons(){return Object.entries(TYPES).filter(([k])=>k!=='gauntlet'||progress.gauntletUnlocked)}
 function buildSlots(container,home=false){
@@ -1218,7 +1218,12 @@ function drawWeapon(k,side,active,anim=0){
    x.fillStyle=active?'#7debf2':'#b8dce5';x.strokeStyle='#f7ffff';x.lineWidth=3.5;
    x.beginPath();x.arc(0,0,21,0,Math.PI*2);x.fill();x.stroke();
    x.shadowBlur=0;x.strokeStyle='#527f8d';x.lineWidth=4;x.beginPath();x.arc(0,0,13,0,Math.PI*2);x.stroke();x.fillStyle='#efffff';x.beginPath();x.arc(0,0,5,0,Math.PI*2);x.fill();
- }else if(k==='gauntletAttack'){let col='#bfefff';x.shadowBlur=12;x.shadowColor=col;x.fillStyle='#f7fdff';x.strokeStyle=col;x.lineWidth=3;x.beginPath();x.roundRect(7,side*13-8,24,16,7);x.fill();x.stroke();x.fillStyle='#8fd8f2';x.fillRect(10,side*13-4,17,8);
+ }else if(k==='gauntletAttack'){
+   // 競技手甲は両拳装備。片側の呼び出しでも左右2個をまとめて描き、重複描画を避ける。
+   if(side<0){x.restore();return;}
+   let col='#d9b8ff';x.shadowBlur=12;x.shadowColor=col;x.fillStyle='#fffaff';x.strokeStyle=col;x.lineWidth=3;
+   for(let sy of [-1,1]){x.beginPath();x.roundRect(7,sy*13-8,24,16,7);x.fill();x.stroke();x.fillStyle='#c89cf5';x.fillRect(10,sy*13-4,17,8);x.fillStyle='#fffaff';}
+
  }else if(k==='spearGuard'){
    // 槍は左右別武器ではなく両手で一本。左手側では追加描画しない。
  }else if(k==='daggerGuard'){
@@ -1376,6 +1381,17 @@ function drawEffect(e){
    let a=e.owner;if(a&&a.alive){let col=weaponColor('daggerAttack');x.globalAlpha=.32;x.strokeStyle=col;x.shadowBlur=18;x.shadowColor=col;x.lineWidth=10;x.beginPath();x.arc(a.x,a.y,48,a.face-1.0,a.face+1.0);x.stroke();x.shadowBlur=0}
  }else if(e.kind==='guardBurst'){
    let a=e.owner;if(a&&a.alive){x.globalAlpha=.30;x.strokeStyle='#9ffaff';x.lineWidth=12;x.beginPath();x.arc(a.x,a.y,62,0,Math.PI*2);x.stroke()}
+ }else if(e.kind==='thrust'&&e.weapon==='gauntletAttack'){
+   if((e.delay||0)>0){x.restore();return}
+   let ph=attackPhase(e),active=ph==='active';
+   if(active||ph==='recovery'){
+     // 手甲は斬撃ではなく、左→右→左の小さな拳の突き残像。
+     let side=e.side==='l'?-1:1,col='#c99cff',off=side*13;
+     let sx=e.owner.x+Math.cos(e.a)*22-Math.sin(e.a)*off,sy=e.owner.y+Math.sin(e.a)*22+Math.cos(e.a)*off;
+     let reach=Math.min(e.range,62),ex=e.owner.x+Math.cos(e.a)*reach-Math.sin(e.a)*off,ey=e.owner.y+Math.sin(e.a)*reach+Math.cos(e.a)*off;
+     x.globalAlpha=active?.55:.20;x.strokeStyle=col;x.shadowBlur=14;x.shadowColor=col;x.lineWidth=7;x.lineCap='round';x.beginPath();x.moveTo(sx,sy);x.lineTo(ex,ey);x.stroke();
+     x.globalAlpha=active?.48:.16;x.fillStyle='#f5eaff';x.beginPath();x.arc(ex,ey,6,0,Math.PI*2);x.fill();
+   }
  }else if(e.kind==='swing'||e.kind==='thrust'){
    if((e.delay||0)>0){x.restore();return}
    let ph=attackPhase(e),elapsed=e.max-e.t,active=ph==='active';
