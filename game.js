@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.70';
+const VERSION='v0.71';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -346,7 +346,15 @@ function hand(a,side,down=true){
   }
   if(kind==='ironBallSpin'){
     a.ironBallHolding=down;
-    if(down){let e=nearestEnemy(a);if(e)a.face=angle(a,e);a.ironBallSpin=Math.max(a.ironBallSpin||0,.01);}
+    if(down){
+      let e=nearestEnemy(a);if(e)a.face=angle(a,e);
+      a.ironBallSpin=Math.max(a.ironBallSpin||0,.01);
+      a.ironBallReadyT=0;
+    }else if((a.ironBallSpin||0)>=.08){
+      // スマホ向け：指を離してから1.15秒は勢いを保持し、攻撃ボタンだけで射出できる。
+      a.ironBallReadyT=1.15;
+      ui.status.textContent='鎖鉄球：今だ！ 攻撃ボタンで射出';
+    }
     return;
   }
   // 短剣の左ボタンは二刀を体の内側へ寄せる防御。押している間だけ有効。
@@ -390,9 +398,13 @@ function hand(a,side,down=true){
     return;
   }
   if(kind==='ironBallAttack'){
-    if((a.ironBallSpin||0)<.08||!a.ironBallHolding){ui.status.textContent='鎖鉄球：防御ボタンで回して勢いをつけてから攻撃！';return;}
+    // 回転中でも、防御を離した直後のREADY時間でも射出可能。同時押しは不要。
+    if((a.ironBallSpin||0)<.08||(!a.ironBallHolding&&(a.ironBallReadyT||0)<=0)){
+      ui.status.textContent='鎖鉄球：防御で回す → 指を離す → 攻撃！';
+      return;
+    }
     const power=Math.max(.18,Math.min(1,(a.ironBallSpin||0)/1.0));
-    a.ironBallHolding=false;a.ironBallSpin=0;a.ironBallThrown=.58;
+    a.ironBallHolding=false;a.ironBallReadyT=0;a.ironBallSpin=0;a.ironBallThrown=.58;
     let th={kind:'thrust',weapon:'ironBallAttack',side:'r',x:a.x,y:a.y,a:a.face,range:105+power*48,arc:.20,t:.58,max:.58,windup:.04,active:.18,recovery:.36,delay:0,team:a.team,owner:a,resolved:false,parry:false,recoveryApplied:false,knockback:42+power*48,ironBallPower:power,specialHit:power>.78?'鉄球・最大加速！':null};
     effects.push(th);a.attackPose=th;a.cd=.82+power*.22;return;
   }
@@ -965,12 +977,17 @@ function update(dt){
   if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||roundOver)return;
   for(let a of actors){
     if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.steadfastT=Math.max(0,(a.steadfastT||0)-dt);a.aiClock=(a.aiClock||0)+dt;a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.skillCdB=Math.max(0,(a.skillCdB||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);if(a.counterT<=0){a.counterCharges=0;a.substitutionReady=false;}if(a.shadowRushT>0){a.shadowRushT=Math.max(0,a.shadowRushT-dt);if(a.shadowRushT<=0&&a.shadowRushReady){a.shadowRushReady=false;a.spearAdvanceT=0;let e2=a.shadowRushTarget&&a.shadowRushTarget.alive?a.shadowRushTarget:nearestEnemy(a);a.shadowRushTarget=null;if(e2)a.face=angle(a,e2);let cut={kind:'swing',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:154,arc:.16,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.01,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:54,lungeApplied:false,knockback:18,specialHit:'ミラージュ・ランジ！'};effects.push(cut);a.attackPose=cut;a.cd=Math.max(a.cd,.42);}}a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);a.ironBallThrown=Math.max(0,(a.ironBallThrown||0)-dt);
+    a.ironBallReadyT=Math.max(0,(a.ironBallReadyT||0)-dt);
     if(a.type==='ironBall'){
       if(a.ironBallHolding&&a.stun<=0){
         a.ironBallSpin=Math.min(1,(a.ironBallSpin||0)+dt*1.45);a.ironBallMoveSlow=.48;
         a.ironBallHitCd=Math.max(0,(a.ironBallHitCd||0)-dt);
         if(a.ironBallHitCd<=0){for(let b of actors){if(!b.alive||b.team===a.team||b.invuln>0)continue;if(dist(a,b)<a.r+b.r+42){let src={weapon:'ironBallAttack',knockback:26+a.ironBallSpin*32,specialHit:'鉄球旋回！'};if(blocked(b,a,src))knockApart(a,b,6,34);else combatHit(b,a,src);a.ironBallHitCd=.34;break;}}}
-      }else{a.ironBallSpin=Math.max(0,(a.ironBallSpin||0)-dt*2.2);a.ironBallMoveSlow=1;}
+      }else{
+        // READY中は回転をほぼ維持。受付終了後に素早く減速する。
+        if((a.ironBallReadyT||0)>0){a.ironBallSpin=Math.max(.08,(a.ironBallSpin||0)-dt*.12);a.ironBallMoveSlow=.72;}
+        else{a.ironBallSpin=Math.max(0,(a.ironBallSpin||0)-dt*2.2);a.ironBallMoveSlow=1;}
+      }
     }if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0){
       try{ai(a,dt)}catch(err){
         a.aiError=String(err&&err.message||err);
@@ -1297,7 +1314,7 @@ function weaponWeight(k){
 }
 function weaponColor(k){return WEIGHT_COLORS[weaponWeight(k)]||WEIGHT_COLORS[4]}
 function drawWeapon(k,side,active,anim=0){
- if(k==='none'||k==='katanaParry'||k==='rapierParry'||k==='greatswordGuard'||k==='gauntletGuard')return;
+ if(k==='none'||k==='katanaParry'||k==='rapierParry'||k==='greatswordGuard'||k==='gauntletGuard'||k==='ironBallSpin')return;
  x.save();x.lineCap='round';
  if(k==='shield'||k==='dualShield'){
    // 盾の中心はターゲット方向へ回り込ませず、常にキャラクターの手元に固定する。
