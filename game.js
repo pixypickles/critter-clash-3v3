@@ -398,7 +398,7 @@ function hand(a,side,down=true){
 function gauntletCombo(a){
   if(a.cd>0)return;
   // 最短リーチの代わりに、三発とも大きく踏み込む。左→右→左。
-  a.cd=.66;const sides=['l','r','l'];
+  a.cd=.66;const sides=['l','r','l'];a.handAnimL=.34;
   for(let i=0;i<3;i++){
     let e={kind:'thrust',weapon:'gauntletAttack',side:sides[i],x:a.x,y:a.y,a:a.face,range:62,arc:.34,t:.27,max:.27,windup:.025,active:.095,recovery:.15,delay:i*.145,team:a.team,owner:a,resolved:false,parry:true,lunge:38,lungeApplied:false,recoveryApplied:false,knockback:i===2?14:5,retarget:true,retargeted:false};
     effects.push(e);if(i===0)a.attackPose=e;
@@ -533,6 +533,20 @@ function resolveAttack(e){
 }
 function blocked(def,atk,source=null){
   let ok=false;
+  // 変わり身は通常BLOCKより先に解決する専用カウンター。成功したら丸太→離脱→二連反撃まで必ず完走。
+  if(def.substitutionReady&&def.counterT>0&&def.type==='dagger'){
+    def.substitutionReady=false;def.counterCharges=0;def.counterT=0;def.daggerGuard=false;def.invuln=Math.max(def.invuln,.58);atk.stun=Math.max(atk.stun,.22);
+    const ox=def.x,oy=def.y,aa=angle(def,atk),side=Math.random()<.5?-1:1;
+    effects.push({kind:'subLog',x:ox,y:oy,t:.92,max:.92,seed:Math.random()*9});
+    // まず横へ抜け、少し背後側へ回る。
+    safePush(def,Math.cos(aa+side*Math.PI/2)*78,Math.sin(aa+side*Math.PI/2)*78);
+    safePush(def,-Math.cos(aa)*28,-Math.sin(aa)*28);
+    def.face=angle(def,atk);
+    const mk=(sd,delay,off)=>({kind:'swing',weapon:'daggerAttack',skill:true,side:sd,x:def.x,y:def.y,a:def.face+off,range:118,arc:.92,t:.34,max:.34,windup:.025,active:.12,recovery:.195,delay,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:42,lungeApplied:false,knockback:sd==='l'?22:10,specialHit:sd==='l'?'変わり身二撃！':'変わり身斬り！'});
+    let c1=mk('r',.10,.16),c2=mk('l',.24,-.16);effects.push(c1,c2);def.attackPose=c1;def.cd=Math.max(def.cd,.62);
+    effects.push({kind:'skillHit',x:ox,y:oy-34,text:'変わり身！',t:.72,max:.72});ui.status.textContent='変わり身成功！ 丸太を残して側面から二連反撃';
+    return true;
+  }
   if(def.shadowRushReady&&def.type==='rapier'){
     // 幻影を斬った相手の背後へ抜け、わずかな時間差で本体が斬り返す。
     def.shadowRushReady=false;def.shadowRushT=0;def.shadowRushTarget=null;def.spearAdvanceT=0;def.invuln=Math.max(def.invuln,.38);atk.stun=Math.max(atk.stun,.16);
@@ -562,20 +576,6 @@ function blocked(def,atk,source=null){
     return true;
   }
   if(def.counterT>0){
-    // 変わり身は「防いで終わり」ではなく、身代わりを残して位置を入れ替え、そのまま斬り抜ける。
-    if(def.substitutionReady&&def.type==='dagger'){
-      def.substitutionReady=false;def.counterCharges=0;def.counterT=0;def.invuln=Math.max(def.invuln,.42);atk.stun=Math.max(atk.stun,.18);
-      const ox=def.x,oy=def.y,aa=angle(def,atk),side=Math.random()<.5?-1:1;
-      effects.push({kind:'subLog',x:ox,y:oy,t:.92,max:.92,seed:Math.random()*9});
-      // 相手の側面～やや背後へ瞬間移動。壁際では safePush が通れる位置までに抑える。
-      safePush(def,Math.cos(aa+side*Math.PI/2)*72,Math.sin(aa+side*Math.PI/2)*72);
-      safePush(def,Math.cos(aa)*34,Math.sin(aa)*34);
-      def.face=angle(def,atk);
-      let cut={kind:'swing',weapon:'daggerAttack',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:126,arc:1.05,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.025,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:92,lungeApplied:false,knockback:20,specialHit:'変わり身斬り！'};
-      effects.push(cut);def.attackPose=cut;def.cd=Math.max(def.cd,.42);
-      effects.push({kind:'skillHit',x:ox,y:oy-34,text:'変わり身！',t:.62,max:.62});ui.status.textContent='変わり身成功！ 側面から斬り抜ける';
-      return true;
-    }
     def.counterCharges=Math.max(0,(def.counterCharges||1)-1);def.counterT=def.counterCharges>0?Math.max(def.counterT,.68):0;def.invuln=Math.max(def.invuln,.26);atk.stun=Math.max(atk.stun,.20);effects.push({kind:'block',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.30});
     if(def.type==='katana'){let sw={kind:'swing',weapon:'katana',skill:true,side:'r',x:def.x,y:def.y,a:angle(def,atk),range:142,arc:1.10,t:.38,max:.38,windup:.05,active:.14,recovery:.19,delay:.04,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,specialHit:'流し斬り HIT!'};effects.push(sw);def.attackPose=sw;}
     else if(def.type==='rapier'){let aa=angle(def,atk)+Math.PI/2*(Math.random()<.5?-1:1);safePush(def,Math.cos(aa)*58,Math.sin(aa)*58);def.face=angle(def,atk);let th={kind:'thrust',weapon:'rapier',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:185,arc:.16,t:.42,max:.42,windup:.04,active:.15,recovery:.23,delay:.03,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:64,lungeApplied:false,specialHit:'幻影斬り HIT!'};effects.push(th);def.attackPose=th;}return true;}
@@ -928,7 +928,7 @@ function update(dt){
   effects.forEach(e=>{
     if((e.delay||0)>0){
       e.delay=Math.max(0,e.delay-dt);
-      if(e.delay<=0&&e.owner?.alive&&(e.kind==='swing'||e.kind==='thrust'))e.owner.attackPose=e;
+      if(e.delay<=0&&e.owner?.alive&&(e.kind==='swing'||e.kind==='thrust')){e.owner.attackPose=e;if(e.weapon==='gauntletAttack'){if(e.side==='l')e.owner.handAnimL=.34;else e.owner.handAnimR=.34;}}
       if(e.delay<=0&&e.retarget&&!e.retargeted&&e.owner?.alive){let t=nearestEnemy(e.owner);if(t){e.owner.face=angle(e.owner,t);e.a=e.owner.face}e.retargeted=true}
       return;
     }
@@ -1235,9 +1235,11 @@ function drawWeapon(k,side,active,anim=0){
    // 横向きでも腕当てに見えないよう、拳だけを包む短く丸い競技グローブ。
    let col='#d6b0ff';x.shadowBlur=10;x.shadowColor=col;x.strokeStyle=col;x.lineWidth=3;
    for(let sy of [-1,1]){
-     x.fillStyle='#fffaff';x.beginPath();x.roundRect(9,sy*12-9,18,18,9);x.fill();x.stroke();
-     x.fillStyle='#c997f2';x.beginPath();x.roundRect(13,sy*12-6,11,12,6);x.fill();
-     x.strokeStyle='#f7ecff';x.lineWidth=2;x.beginPath();x.moveTo(14,sy*12);x.lineTo(23,sy*12);x.stroke();
+     // 左右の拳が三連打に合わせて実際に少し前へ出る。sy<0=左、sy>0=右。
+     let ha=sy<0?(owner?.handAnimL||0):(owner?.handAnimR||0),hp=ha>0?Math.sin(Math.PI*(1-Math.min(1,ha/.34))):0,px=hp*13;
+     x.fillStyle='#fffaff';x.beginPath();x.roundRect(9+px,sy*12-9,18,18,9);x.fill();x.stroke();
+     x.fillStyle='#c997f2';x.beginPath();x.roundRect(13+px,sy*12-6,11,12,6);x.fill();
+     x.strokeStyle='#f7ecff';x.lineWidth=2;x.beginPath();x.moveTo(14+px,sy*12);x.lineTo(23+px,sy*12);x.stroke();
      x.strokeStyle=col;x.lineWidth=3;
    }
 
