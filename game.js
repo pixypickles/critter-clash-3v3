@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.68';
+const VERSION='v0.69';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -563,17 +563,55 @@ function blocked(def,atk,source=null){
   }
   if(def.counterT>0){
     // 変わり身は「防いで終わり」ではなく、身代わりを残して位置を入れ替え、そのまま斬り抜ける。
-    if(def.substitutionReady&&def.type==='dagger'){
-      def.substitutionReady=false;def.counterCharges=0;def.counterT=0;def.invuln=Math.max(def.invuln,.42);atk.stun=Math.max(atk.stun,.18);
+    if(def.substitutionReady&&(def.type==='dagger'||def.type==='gauntlet')){
+      def.substitutionReady=false;def.counterCharges=0;def.counterT=0;
+      def.invuln=Math.max(def.invuln,.48);atk.stun=Math.max(atk.stun,.20);
       const ox=def.x,oy=def.y,aa=angle(def,atk),side=Math.random()<.5?-1:1;
       effects.push({kind:'subLog',x:ox,y:oy,t:.92,max:.92,seed:Math.random()*9});
-      // 相手の側面～やや背後へ瞬間移動。壁際では safePush が通れる位置までに抑える。
-      safePush(def,Math.cos(aa+side*Math.PI/2)*72,Math.sin(aa+side*Math.PI/2)*72);
-      safePush(def,Math.cos(aa)*34,Math.sin(aa)*34);
+
+      // 相手の側面～やや背後へ瞬間移動。
+      safePush(def,Math.cos(aa+side*Math.PI/2)*76,Math.sin(aa+side*Math.PI/2)*76);
+      safePush(def,-Math.cos(aa)*34,-Math.sin(aa)*34);
       def.face=angle(def,atk);
-      let cut={kind:'swing',weapon:'daggerAttack',skill:true,side:'r',x:def.x,y:def.y,a:def.face,range:126,arc:1.05,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.025,team:def.team,owner:def,resolved:false,parry:true,recoveryApplied:false,lunge:92,lungeApplied:false,knockback:20,specialHit:'変わり身斬り！'};
-      effects.push(cut);def.attackPose=cut;def.cd=Math.max(def.cd,.42);
-      effects.push({kind:'skillHit',x:ox,y:oy-34,text:'変わり身！',t:.62,max:.62});ui.status.textContent='変わり身成功！ 側面から斬り抜ける';
+
+      if(def.type==='gauntlet'){
+        // 手甲では短剣を突然出さず、左→右→左の高速三連拳で反撃。
+        const sides=['l','r','l'];
+        for(let i=0;i<3;i++){
+          let punch={
+            kind:'thrust',weapon:'gauntletAttack',skill:true,side:sides[i],
+            x:def.x,y:def.y,a:def.face,range:70,arc:.32,
+            t:.26,max:.26,windup:.02,active:.09,recovery:.15,
+            delay:.07+i*.13,team:def.team,owner:def,resolved:false,parry:true,
+            recoveryApplied:false,lunge:34,lungeApplied:false,
+            knockback:i===2?20:6,retarget:true,retargeted:false,
+            specialHit:i===2?'変わり身連拳！':null
+          };
+          effects.push(punch);
+          if(i===0)def.attackPose=punch;
+        }
+        def.cd=Math.max(def.cd,.62);
+        ui.status.textContent='変わり身成功！ 側面から三連拳';
+      }else{
+        // 短剣は右→左の二連斬り。
+        for(let i=0;i<2;i++){
+          let cut={
+            kind:'swing',weapon:'daggerAttack',skill:true,side:i===0?'r':'l',
+            x:def.x,y:def.y,a:def.face,range:126,arc:1.05,
+            t:.38,max:.38,windup:.025,active:.13,recovery:.225,
+            delay:.06+i*.15,team:def.team,owner:def,resolved:false,parry:true,
+            recoveryApplied:false,lunge:56,lungeApplied:false,
+            knockback:i===1?20:8,retarget:true,retargeted:false,
+            specialHit:i===1?'変わり身斬り！':null
+          };
+          effects.push(cut);
+          if(i===0)def.attackPose=cut;
+        }
+        def.cd=Math.max(def.cd,.54);
+        ui.status.textContent='変わり身成功！ 側面から二連斬り';
+      }
+
+      effects.push({kind:'skillHit',x:ox,y:oy-34,text:'変わり身！',t:.72,max:.72});
       return true;
     }
     def.counterCharges=Math.max(0,(def.counterCharges||1)-1);def.counterT=def.counterCharges>0?Math.max(def.counterT,.68):0;def.invuln=Math.max(def.invuln,.26);atk.stun=Math.max(atk.stun,.20);effects.push({kind:'block',x:(def.x+atk.x)/2,y:(def.y+atk.y)/2,t:.30});
