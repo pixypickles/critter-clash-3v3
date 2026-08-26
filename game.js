@@ -905,6 +905,16 @@ function ai(a,dt){
   move(a,Math.cos(ang),Math.sin(ang),dt);
 }
 function inputVector(){let vx=joy.dx+(keys.ArrowRight||keys.d?1:0)-(keys.ArrowLeft||keys.a?1:0),vy=joy.dy+(keys.ArrowDown||keys.s?1:0)-(keys.ArrowUp||keys.w?1:0);let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}return [vx,vy]}
+function ensurePracticeOpponent(){
+  if(mode!=='practice')return;
+  let e=actors.find(a=>a.team===1&&!a.isPlayerClone);
+  if(e&&e.alive)return;
+  // 練習場は常に1対1。何らかの処理で相手が消えても、その場で練習相手を復帰させる。
+  e=unit(1,0,'sword','spinSlash');
+  e.x=810;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;
+  e.practiceAttackWait=.8;e.practiceAttackHold=0;e.practiceRetreat=0;e.alive=true;
+  actors=actors.filter(a=>a.team!==1||a.isPlayerClone);actors.push(e);
+}
 function update(dt){
   let [vx,vy]=inputVector();
   if(mode==='field'){
@@ -912,6 +922,7 @@ function update(dt){
     ui.status.textContent=fac?`${fac.name}の近くです。B「入る」`:'ホームで編成・競技場で大会・練習場で1対1・道場や魔獣の森で強敵戦';return;
   }
   if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||roundOver)return;
+  if(mode==='practice')ensurePracticeOpponent();
   for(let a of actors){
     if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.steadfastT=Math.max(0,(a.steadfastT||0)-dt);a.aiClock=(a.aiClock||0)+dt;a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.skillCdB=Math.max(0,(a.skillCdB||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);if(a.counterT<=0){a.counterCharges=0;a.substitutionReady=false;}if(a.shadowRushT>0){a.shadowRushT=Math.max(0,a.shadowRushT-dt);if(a.shadowRushT<=0&&a.shadowRushReady){a.shadowRushReady=false;a.spearAdvanceT=0;let e2=a.shadowRushTarget&&a.shadowRushTarget.alive?a.shadowRushTarget:nearestEnemy(a);a.shadowRushTarget=null;if(e2)a.face=angle(a,e2);let cut={kind:'swing',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:154,arc:.16,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.01,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:54,lungeApplied:false,knockback:18,specialHit:'ミラージュ・ランジ！'};effects.push(cut);a.attackPose=cut;a.cd=Math.max(a.cd,.42);}}a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0)ai(a,dt)
   }
