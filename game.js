@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='v0.65';
+const VERSION='v0.66';
 const c=document.querySelector('#game'),x=c.getContext('2d'),W=1280,H=720;
 const ui={score:q('#score'),status:q('#status'),mode:q('#modeLabel'),setup:q('#setup'),slots:q('#slots'),result:q('#result'),rt:q('#resultTitle'),rr:q('#resultText'),L:q('#leftHand'),R:q('#rightHand'),E:q('#enter'),S:q('#skill'),home:q('#homeSetup'),homeSlots:q('#homeSlots'),practiceHud:q('#practiceHud'),practiceScore:q('#practiceScore'),practiceExit:q('#practiceExit')};
 function q(s){return document.querySelector(s)}
@@ -45,6 +45,7 @@ const TYPES={
   greatsword:{name:'両手剣',r:'greatsword',l:'greatswordGuard',speed:138,weight:7,defaultSkill:'spinSlash'},
   gauntlet:{name:'競技手甲',r:'gauntletAttack',l:'gauntletGuard',speed:258,weight:0,defaultSkill:'dashSlash'}
 };
+let roundAge=0;
 let formation=['sword','spear','dagger'],formationSkills=['spinSlash','doubleThrust','dashSlash'],formationSkillsB=['none','none','none'],formationTactics=['balanced','support','flank'],mode='field',blue=0,red=0,roundOver=0,last=performance.now(),keys={},joy={id:null,dx:0,dy:0},actors=[],effects=[],practiceHits=[0,0],enemyTeam=null;
 const SAVE_KEY='kbs_team_v020',PROGRESS_KEY='kbs_progress_v020';
 let tournament=null,bossBattle=null,beastReplayIndex=0;
@@ -131,9 +132,37 @@ function unit(team,i,type,skillId=null,skillIdB='none'){
   const ys=[155,360,565], bx=team===0?155:1125;
   return {team,i,type,skillId:skillId||TYPES[type].defaultSkill,skillIdB:skillIdB||'none',tactic:team?((enemyTeam?.tactics||[])[i]||'balanced'):(formationTactics[i]||'balanced'),x:bx,y:ys[i],r:38,alive:true,face:team?Math.PI:0,cd:0,stun:0,shield:false,shieldA:0,spearGuard:0,spearGuardCd:0,daggerGuard:false,greatswordGuard:false,greatswordGuardA:0,steadfastT:0,beastKind:null,beastState:'',beastTimer:0,ai:team===1||i>0,species:team?(i%3):(i===0?'snowFox':i===1?'frog':'rabbit'),counterT:0,counterCharges:0,shadowRushReady:false,shadowRushT:0,shadowRushTarget:null,isHanzoClone:false,isPlayerClone:false,cloneOwner:null,cloneExpire:0,cloneSide:0,cloneBoss:null,parryT:0,parryCd:0,parryKind:null,handAnimL:0,handAnimR:0,attackPose:null,skillCd:0,skillCdB:0,invuln:0,stepT:0,stepVX:0,stepVY:0,stepCd:0,spearAdvanceT:0,spearAdvanceVX:0,spearAdvanceVY:0}
 }
-function resetRound(){actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));(enemyTeam?.formation||['sword','spear','dagger']).forEach((t,i)=>actors.push(unit(1,i,t,(enemyTeam?.skillsA||[])[i]||null,(enemyTeam?.skillsB||[])[i]||'none')));roundOver=0;effects=[];syncButtons()}
+function normalizeWeaponId(v){
+  const aliases={naginata:'halberd',greatSword:'greatsword',great_sword:'greatsword'};
+  v=aliases[v]||v;return TYPES[v]?v:'sword';
+}
+function normalizeTeamState(){
+  const base=['sword','spear','dagger'];
+  formation=Array.from({length:3},(_,i)=>normalizeWeaponId(formation?.[i]||base[i]));
+  formationTactics=Array.from({length:3},(_,i)=>TACTICS[formationTactics?.[i]]?formationTactics[i]:'balanced');
+  formationSkills=Array.from({length:3},(_,i)=>SKILLS[formationSkills?.[i]]?formationSkills[i]:TYPES[formation[i]].defaultSkill);
+  formationSkillsB=Array.from({length:3},(_,i)=>SKILLS[formationSkillsB?.[i]]?formationSkillsB[i]:'none');
+}
+function safeUnit(team,i,type,skillA=null,skillB='none'){
+  type=normalizeWeaponId(type);
+  if(skillA&&!SKILLS[skillA])skillA=null;
+  if(skillB&&!SKILLS[skillB])skillB='none';
+  try{return unit(team,i,type,skillA,skillB)}catch(err){
+    console.error('unit spawn fallback',team,i,type,err);
+    return unit(team,i,'sword','spinSlash','none');
+  }
+}
+function resetRound(){
+  normalizeTeamState();actors=[];
+  // 配列の長さや古いセーブ内容に左右されず、必ず味方3人＋敵3人を生成する。
+  for(let i=0;i<3;i++)actors.push(safeUnit(0,i,formation[i],formationSkills[i],formationSkillsB[i]));
+  const ef=enemyTeam?.formation||['sword','spear','dagger'];
+  for(let i=0;i<3;i++)actors.push(safeUnit(1,i,ef[i]||['sword','spear','dagger'][i],(enemyTeam?.skillsA||[])[i]||null,(enemyTeam?.skillsB||[])[i]||'none'));
+  roundOver=0;roundAge=0;effects=[];syncButtons();
+  ui.status.textContent=`3対3 準備完了：味方 ${actors.filter(a=>a.team===0).length} / 敵 ${actors.filter(a=>a.team===1).length}`;
+}
 function pickEnemyTeam(){let pool=ENEMY_TEAMS.filter(t=>t.rank<=progress.unlocked);enemyTeam=pool[Math.floor(Math.random()*pool.length)]}
-function startMatch(){mode='match';blue=red=0;if(!tournament)pickEnemyTeam();ui.mode.textContent=tournament?'TOURNAMENT':'MATCH';ui.score.textContent='0 - 0';resetRound();ui.status.textContent=`${PLAYER_TEAM_NAME} VS ${enemyTeam.name}${enemyTeam.style?'［'+enemyTeam.style+'型］':''}　敵拠点を取るか全員OUTで勝利`;syncModeButtons()}
+function startMatch(){mode='match';blue=red=0;if(!tournament)pickEnemyTeam();if(!enemyTeam)enemyTeam=ENEMY_TEAMS[0];ui.mode.textContent=tournament?'TOURNAMENT':'MATCH';ui.score.textContent='0 - 0';resetRound();let bc=actors.filter(a=>a.team===0&&a.alive).length,rc=actors.filter(a=>a.team===1&&a.alive).length;ui.status.textContent=`${PLAYER_TEAM_NAME} VS ${enemyTeam.name}${enemyTeam.style?'［'+enemyTeam.style+'型］':''}　${bc}対${rc}／敵拠点を取るか全員OUTで勝利`;syncModeButtons()}
 function controlled(){return actors.find(a=>a.team===0&&a.alive&&!a.ai&&!a.isPlayerClone)||null}
 function transfer(){let n=actors.find(a=>a.team===0&&a.alive&&!a.isPlayerClone);if(n){actors.filter(a=>a.team===0&&!a.isPlayerClone).forEach(a=>a.ai=true);n.ai=false;syncButtons()}}
 function syncModeButtons(){if(mode==='field'){ui.S.innerHTML='A<small>情報</small>';ui.E.innerHTML='B<small>入る</small>'}else syncButtons()}
@@ -906,7 +935,7 @@ function ai(a,dt){
 }
 function inputVector(){let vx=joy.dx+(keys.ArrowRight||keys.d?1:0)-(keys.ArrowLeft||keys.a?1:0),vy=joy.dy+(keys.ArrowDown||keys.s?1:0)-(keys.ArrowUp||keys.w?1:0);let m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}return [vx,vy]}
 function makePracticeOpponent(){
-  let e=unit(1,0,'sword','spinSlash','none');
+  let e=safeUnit(1,0,'sword','spinSlash','none');
   e.x=790;e.y=360;e.ai=true;e.tactic='attack';e.practiceAggro=true;e.practiceOpponent=true;
   e.practiceAttackWait=.75;e.practiceAttackHold=0;e.practiceRetreat=0;e.alive=true;
   e.species='frog';e.furOverride='#78c96b';
@@ -935,6 +964,18 @@ function update(dt){
     ensurePracticeOpponent();
   }
   if((mode!=='match'&&mode!=='practice'&&mode!=='boss')||(roundOver&&mode!=='practice'))return;
+  if(mode==='match'){
+    roundAge=(roundAge||0)+dt;
+    if(roundAge<.75){
+      // 開始直後に生成漏れが起きた場合だけ補完。試合中の正式なOUTは復活させない。
+      for(let team=0;team<2;team++)for(let i=0;i<3;i++){
+        if(!actors.some(a=>a.team===team&&a.i===i&&!a.isPlayerClone)){
+          if(team===0)actors.push(safeUnit(0,i,formation[i],formationSkills[i],formationSkillsB[i]));
+          else{let ef=enemyTeam?.formation||['sword','spear','dagger'];actors.push(safeUnit(1,i,ef[i]||['sword','spear','dagger'][i],(enemyTeam?.skillsA||[])[i]||null,(enemyTeam?.skillsB||[])[i]||'none'));}
+        }
+      }
+    }
+  }
   for(let a of actors){
     if(!a.alive)continue;rescueFromWall(a);a.cd=Math.max(0,a.cd-dt);a.steadfastT=Math.max(0,(a.steadfastT||0)-dt);a.aiClock=(a.aiClock||0)+dt;a.stun=Math.max(0,a.stun-dt);a.skillCd=Math.max(0,(a.skillCd||0)-dt);a.skillCdB=Math.max(0,(a.skillCdB||0)-dt);a.invuln=Math.max(0,(a.invuln||0)-dt);a.counterT=Math.max(0,(a.counterT||0)-dt);if(a.counterT<=0){a.counterCharges=0;a.substitutionReady=false;}if(a.shadowRushT>0){a.shadowRushT=Math.max(0,a.shadowRushT-dt);if(a.shadowRushT<=0&&a.shadowRushReady){a.shadowRushReady=false;a.spearAdvanceT=0;let e2=a.shadowRushTarget&&a.shadowRushTarget.alive?a.shadowRushTarget:nearestEnemy(a);a.shadowRushTarget=null;if(e2)a.face=angle(a,e2);let cut={kind:'swing',weapon:'rapier',skill:true,side:'r',x:a.x,y:a.y,a:a.face,range:154,arc:.16,t:.40,max:.40,windup:.025,active:.14,recovery:.235,delay:.01,team:a.team,owner:a,resolved:false,parry:true,recoveryApplied:false,lunge:54,lungeApplied:false,knockback:18,specialHit:'ミラージュ・ランジ！'};effects.push(cut);a.attackPose=cut;a.cd=Math.max(a.cd,.42);}}a.parryT=Math.max(0,(a.parryT||0)-dt);a.parryCd=Math.max(0,(a.parryCd||0)-dt);a.daggerSkillGuard=Math.max(0,(a.daggerSkillGuard||0)-dt);a.spearGuard=Math.max(0,(a.spearGuard||0)-dt);a.spearGuardCd=Math.max(0,(a.spearGuardCd||0)-dt);a.stepCd=Math.max(0,(a.stepCd||0)-dt);a.handAnimL=Math.max(0,(a.handAnimL||0)-dt);a.handAnimR=Math.max(0,(a.handAnimR||0)-dt);if(a.spearAdvanceT>0){let use=Math.min(dt,a.spearAdvanceT);a.spearAdvanceT=Math.max(0,a.spearAdvanceT-dt);safePush(a,a.spearAdvanceVX*use,a.spearAdvanceVY*use);}if(a.skillCharge>0){let use=Math.min(dt,a.skillCharge);a.skillCharge=Math.max(0,a.skillCharge-dt);safePush(a,a.skillChargeVX*use,a.skillChargeVY*use);for(let b of actors){if(!b.alive||b.team===a.team)continue;if(dist(a,b)<a.r+b.r+18){knockApart(a,b,10,68);b.stun=Math.max(b.stun,.48);effects.push({kind:'block',x:(a.x+b.x)/2,y:(a.y+b.y)/2,t:.34})}}}if(a.attackPose&&a.attackPose.t<=0)a.attackPose=null;if(a.stepT>0){updateStep(a,dt)}else if(a.ai&&a.stun<=0)ai(a,dt)
   }
@@ -1000,7 +1041,8 @@ function startPractice(){
   if(ui.practiceExit)ui.practiceExit.classList.remove('hidden');
   enemyTeam={name:'練習パートナー',colors:['#7a8397','#c7cfdd','#f3d38a'],formation:['sword'],tactics:['attack']};
   effects=[];
-  let p=unit(0,0,formation[0],formationSkills[0],formationSkillsB[0]);
+  normalizeTeamState();
+  let p=safeUnit(0,0,formation[0],formationSkills[0],formationSkillsB[0]);
   p.x=475;p.y=360;p.ai=false;p.tactic='balanced';p.alive=true;
   let e=makePracticeOpponent();
   actors=[p,e];
@@ -1100,7 +1142,7 @@ const RIFT_BOSSES={
  catlee:{id:'catlee',name:'拳聖 キャット・リー',type:'gauntlet',skill:'fajin',reward:'fajin',rewardName:'発勁',hp:7,kind:'catlee',colors:['#f4fbff','#9fe8ff','#4b78a8']},
  aegis:{id:'aegis',name:'重装守護者 イージス',type:'doubleShield',skill:'aegisRush',reward:'aegisRush',rewardName:'鉄壁突進',hp:8,kind:'aegis',colors:['#4a535e','#d9e1e8','#8ea0b2']}
 };
-function beginBoss(b,meta){bossBattle={...meta,boss:b};enemyTeam={name:b.name,colors:b.colors||['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];formation.forEach((t,i)=>actors.push(unit(0,i,t,formationSkills[i],formationSkillsB[i])));let e=unit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=b.hp||3;e.maxHp=b.hp||3;e.r=b.kind==='troll'?52:b.kind==='bull'?50:b.kind==='wyvern'?48:46;e.bossKind=b.kind||null;e.beastKind=['troll','bull','wyvern'].includes(b.kind)?b.kind:null;e.beastState=b.kind==='wyvern'?'ground':b.kind==='bull'?'stalk':'';e.beastTimer=b.kind==='wyvern'?.8:b.kind==='bull'?.7:0;if(e.beastKind)e.species=b.kind;const bossLooks={musashi:['fox','#d7b168'],sasuke:['rabbit','#818aa2'],hanzo:['snowFox','#465b70'],kojiro:['snowFox','#f3f7ff'],kannu:['frog','#5fbf73'],gladiator:['frog','#c77b48'],leon:['rabbit','#a9b6c7'],sieg:['fox','#b38a7a'],athos:['rabbit','#e8e0d4'],aramis:['snowFox','#b9b0dc'],aegis:['frog','#91a4b3'],catlee:['fox','#d9b27c'],mouse:['rabbit','#9a8f86']};if(bossLooks[b.kind]){e.species=bossLooks[b.kind][0];e.furOverride=bossLooks[b.kind][1]}if(b.kind==='kannu'){e.speedBonus=65;e.r=50;e.mounted=true}actors.push(e);effects=[];if(b.kind==='hanzo')spawnHanzoClones(e,true);blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent=`BOSS HP ${e.hp}/${e.maxHp}`;ui.status.textContent=e.beastKind?`${b.name}：魔獣の森。木の幹を避けて戦う。拠点なし、こちらは一撃OUT、魔獣は${e.maxHp}HITで撃破`:bossBattle.source==='rift'?`${b.name}：時空決闘。壁・拠点なし、強敵は${e.maxHp}HITで撃破`:`${b.name}：障害物・拠点なしの決闘。こちらは一撃OUT、強敵は${e.maxHp}HITで撃破`;syncModeButtons()}
+function beginBoss(b,meta){bossBattle={...meta,boss:b};enemyTeam={name:b.name,colors:b.colors||['#743c2f','#d9a54c','#f4e2ad'],formation:[b.type],tactics:['balanced']};mode='boss';roundOver=0;actors=[];normalizeTeamState();for(let i=0;i<3;i++)actors.push(safeUnit(0,i,formation[i],formationSkills[i],formationSkillsB[i]));let e=safeUnit(1,0,b.type,b.skill);e.x=1000;e.y=360;e.ai=true;e.boss=true;e.hp=b.hp||3;e.maxHp=b.hp||3;e.r=b.kind==='troll'?52:b.kind==='bull'?50:b.kind==='wyvern'?48:46;e.bossKind=b.kind||null;e.beastKind=['troll','bull','wyvern'].includes(b.kind)?b.kind:null;e.beastState=b.kind==='wyvern'?'ground':b.kind==='bull'?'stalk':'';e.beastTimer=b.kind==='wyvern'?.8:b.kind==='bull'?.7:0;if(e.beastKind)e.species=b.kind;const bossLooks={musashi:['fox','#d7b168'],sasuke:['rabbit','#818aa2'],hanzo:['snowFox','#465b70'],kojiro:['snowFox','#f3f7ff'],kannu:['frog','#5fbf73'],gladiator:['frog','#c77b48'],leon:['rabbit','#a9b6c7'],sieg:['fox','#b38a7a'],athos:['rabbit','#e8e0d4'],aramis:['snowFox','#b9b0dc'],aegis:['frog','#91a4b3'],catlee:['fox','#d9b27c'],mouse:['rabbit','#9a8f86']};if(bossLooks[b.kind]){e.species=bossLooks[b.kind][0];e.furOverride=bossLooks[b.kind][1]}if(b.kind==='kannu'){e.speedBonus=65;e.r=50;e.mounted=true}actors.push(e);effects=[];if(b.kind==='hanzo')spawnHanzoClones(e,true);blue=red=0;ui.mode.textContent='BOSS';ui.score.textContent=`BOSS HP ${e.hp}/${e.maxHp}`;ui.status.textContent=e.beastKind?`${b.name}：魔獣の森。木の幹を避けて戦う。拠点なし、こちらは一撃OUT、魔獣は${e.maxHp}HITで撃破`:bossBattle.source==='rift'?`${b.name}：時空決闘。壁・拠点なし、強敵は${e.maxHp}HITで撃破`:`${b.name}：障害物・拠点なしの決闘。こちらは一撃OUT、強敵は${e.maxHp}HITで撃破`;syncModeButtons()}
 function startBoss(){if(progress.pendingBoss===null){ui.status.textContent='今は静かです。ランク大会を終えると強敵が現れます';return}let bi=Math.min(progress.pendingBoss,BOSSES.length-1),b=BOSSES[bi];beginBoss(b,{source:'trial',index:bi})}
 function startDojoBoss(kind){let b=DOJO_BOSSES[kind];if(!b)return;if(!progress.specialChampions.includes(b.specialId)){ui.status.textContent=`まず${kind==='long'?'長物限定大会':'軽量武器専門大会'}で優勝してください`;return}if(progress.dojoDefeated.includes(kind)){ui.status.textContent=`${kind==='long'?'長物道場':'軽量道場'}の奥義は修得済みです`;return}beginBoss(b,{source:'dojo',dojo:kind})}
 function openBeastMenu(){let unlocked=progress.beastUnlocked.filter(id=>BEAST_BOSSES[id]);if(!unlocked.length){ui.status.textContent='大会で優勝すると魔獣の気配が現れます';return}let list=q('#rankList');q('#tournamentTitle').textContent='魔獣の森';q('#tournamentMessage').textContent='戦う魔獣を選んでください。撃破済みの魔獣とも何度でも再戦できます。';list.innerHTML=unlocked.map(id=>{let b=BEAST_BOSSES[id],done=progress.beastDefeated.includes(id);return `<button class="rankBtn" data-beast="${id}"><b>${b.name}</b><small>${done?'撃破済み・再戦可能':'未撃破'}｜BOSS HP ${b.hp}</small></button>`}).join('');q('#tournamentStandings').innerHTML='<p class="note">魔獣戦は拠点なし。森の地形で戦います。</p>';list.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{q('#tournament').classList.add('hidden');startBeastBoss(btn.dataset.beast)});q('#tournament').classList.remove('hidden');mode='menu';syncModeButtons()}
